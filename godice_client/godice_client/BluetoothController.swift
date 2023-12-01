@@ -61,6 +61,7 @@ class BluetoothController: NSObject {
     }
     
     enum DiceColor: UInt8 {
+        case Unknown = 99
         case Black = 0
         case Red = 1
         case Green = 2
@@ -70,18 +71,20 @@ class BluetoothController: NSObject {
     }
     
     enum DiceResults {
-        case RollStarted(color: DiceColor)
-        case BatteryLevel(color: Dice)
-        case Stable(color: DiceColor, values: [UInt8])
-        case FakeStable(color: DiceColor, values: [UInt8])
-        case TiltStable(color: DiceColor, values: [UInt8])
-        case MoveStable(color: DiceColor, values: [UInt8])
+        case Connected
+        case RollStarted
+        case ColorFetched(value: UInt8)
+        case BatteryLevel(value: UInt8)
+        case Stable(values: [UInt8])
+        case FakeStable(values: [UInt8])
+        case TiltStable(values: [UInt8])
+        case MoveStable(values: [UInt8])
     }
     
     class DiceSession: NSObject, CBPeripheralDelegate {
-        var color: DiceColor!
         let updateCallback: (CBPeripheral, DiceResults) -> Void
         let peripheral: CBPeripheral
+        var writeCharacteristic: CBCharacteristic!
         
         init(peripheral: CBPeripheral, updateCallback: @escaping (CBPeripheral, DiceResults) -> Void) {
             self.peripheral = peripheral
@@ -94,8 +97,12 @@ class BluetoothController: NSObject {
             peripheral.discoverServices([BluetoothController.serviceUUID])
         }
         
+        func fetchColor() -> Void {
+            peripheral.writeValue(Data([MessageIdentifier.DiceColor.rawValue]), for: writeCharacteristic, type: .withResponse)
+        }
+        
         func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-             if let services = peripheral.services {
+            if let services = peripheral.services {
                 for service in services {
                     peripheral.discoverCharacteristics([BluetoothController.writeUUID, BluetoothController.notifyUUID], for: service)
                 }
@@ -112,11 +119,11 @@ class BluetoothController: NSObject {
                     print("Unable to find write characteristic")
                     return
                 }
-                
+                writeCharacteristic = writeCH
                 peripheral.setNotifyValue(true, for: notifyCH)
-                
-                peripheral.writeValue(Data([MessageIdentifier.DiceColor.rawValue]), for: writeCH, type: .withResponse)
             }
+            
+            updateCallback(peripheral, .Connected)
         }
         
         private func rollVector(_ rawData: Data) -> [UInt8]? {
@@ -135,31 +142,40 @@ class BluetoothController: NSObject {
             
             let firstByte = rawData[0]
             switch (firstByte) {
-                case 82:
-                return DiceResults.RollStarted(color: color)
+            case 82:
+                return DiceResults.RollStarted
                 
-                case 66:
-                print("battery level received")
-                return nil
+            case 66:
+                if rawData[1] == 97 && rawData[2] == 116 {
+                    print("battery level received: \(rawData[3])")
+                    return .BatteryLevel(value: rawData[3])
+                } else {
+                    print("Doesn't match expected battery data")
+                    return nil
+                }
                 
-                case 67:
-                print("dice color received: \(rawData[3])")
-                color = DiceColor(rawValue: rawData[3])
-                return nil
+            case 67:
+                if rawData[1] == 111 && rawData[2] == 108 {
+                    print("dice color received: \(rawData[3])")
+                    return .ColorFetched(value: rawData[3])
+                } else {
+                    print("Doesn't match expected color data")
+                    return nil
+                }
                 
-                case 83:
-                return rollVector(rawData).map { .Stable(color: color, values: $0) }
+            case 83:
+                return rollVector(rawData).map { .Stable(values: $0) }
                 
-                case 70:
-                return rollVector(rawData.advanced(by: 1)).map { .FakeStable(color: color, values: $0) }
+            case 70:
+                return rollVector(rawData.advanced(by: 1)).map { .FakeStable(values: $0) }
                 
-                case 84:
-                return rollVector(rawData.advanced(by: 1)).map { .TiltStable(color: color, values: $0) }
+            case 84:
+                return rollVector(rawData.advanced(by: 1)).map { .TiltStable(values: $0) }
                 
-                case 77:
-                return rollVector(rawData.advanced(by: 1)).map { .MoveStable(color: color, values: $0) }
+            case 77:
+                return rollVector(rawData.advanced(by: 1)).map { .MoveStable(values: $0) }
                 
-                default:
+            default:
                 print("Unknown first byte \(firstByte)")
                 return nil
             }
@@ -204,7 +220,7 @@ extension BluetoothController: CBCentralManagerDelegate, CBPeripheralDelegate {
             
         @unknown default:
             print("Unknown bluetooth status")
-
+            
         }
     }
     
@@ -232,16 +248,39 @@ extension BluetoothController: CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     func sessionUpdated(peripheral: CBPeripheral, results: DiceResults) {
+        guard let name = peripheral.name else {
+            print("Peripheral has no name!")
+            return
+        }
+        guard let session = sessions[name] else {
+            print("No session exists for \(name)")
+            return
+        }
+        
         switch (results) {
-            case .RollStarted:
+        case .Connected:
+            if colors[name] == nil {
+                sessions[name]?.fetchColor()
+            }
+            break
+            
+            
+        case .ColorFetched(value: let value):
+            colors[name] = DiceColor(rawValue: value)
+            break
+            
+        case .BatteryLevel(value: let value):
+            print("Received battery level \(value)")
+            
+        case .RollStarted:
             print("roll started")
             break
             
-        case let .Stable(color, values), 
-            let .FakeStable(color, values),
-            let .TiltStable(color, values),
-            let .MoveStable(color, values):
-            print("received values \(values) for color \(color)")
+        case let .Stable(values),
+            let .FakeStable(values),
+            let .TiltStable(values),
+            let .MoveStable(values):
+            print("received values \(values) for color \(colors[name] ?? .Unknown)")
             break
         }
     }
