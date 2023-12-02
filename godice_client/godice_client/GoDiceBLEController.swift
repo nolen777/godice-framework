@@ -8,8 +8,9 @@
 import Foundation
 import CoreBluetooth
 
-class BluetoothController: NSObject {
-    private var centralManager: CBCentralManager!
+class GoDiceBLEController: NSObject {
+    private let centralManager: CBCentralManager
+    private let queue = DispatchQueue(label: "goDiceBLEControllerDelegateQueue")
     
     static let serviceUUID = CBUUID(string: "6e400001-b5a3-f393-e0a9-e50e24dcca9e")
     static let writeUUID = CBUUID(string: "6e400002-b5a3-f393-e0a9-e50e24dcca9e")
@@ -30,6 +31,12 @@ class BluetoothController: NSObject {
         }
     }
     
+    override init() {
+        centralManager = CBCentralManager(delegate: nil, queue: queue)
+        super.init()
+        centralManager.delegate = self
+    }
+    
     var shouldScan: Bool {
         return centralManager.state == .poweredOn && listening
     }
@@ -38,7 +45,7 @@ class BluetoothController: NSObject {
         if shouldScan && !centralManager.isScanning {
             print("Starting scan")
             
-            centralManager.scanForPeripherals(withServices: [BluetoothController.serviceUUID])
+            centralManager.scanForPeripherals(withServices: [GoDiceBLEController.serviceUUID])
         }
     }
     
@@ -46,11 +53,12 @@ class BluetoothController: NSObject {
         if !shouldScan && centralManager.isScanning {
             print("Stopping scan")
             centralManager.stopScan()
+            
+            sessions.forEach { (name, session) in
+                centralManager.cancelPeripheralConnection(session.peripheral)
+            }
+            sessions = [:]
         }
-    }
-    
-    func setUp() {
-        centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     
     enum MessageIdentifier: UInt8 {
@@ -70,15 +78,27 @@ class BluetoothController: NSObject {
         case Orange = 5
     }
     
+    struct DieVector {
+        let x: UInt8
+        let y: UInt8
+        let z: UInt8
+        
+        init(_ vector: [UInt8]) {
+            x = vector[0]
+            y = vector[1]
+            z = vector[2]
+        }
+    }
+    
     enum DiceResults {
         case Connected
         case RollStarted
         case ColorFetched(value: UInt8)
         case BatteryLevel(value: UInt8)
-        case Stable(values: [UInt8])
-        case FakeStable(values: [UInt8])
-        case TiltStable(values: [UInt8])
-        case MoveStable(values: [UInt8])
+        case Stable(vector: DieVector)
+        case FakeStable(vector: DieVector)
+        case TiltStable(vector: DieVector)
+        case MoveStable(vector: DieVector)
     }
     
     class DiceSession: NSObject, CBPeripheralDelegate {
@@ -94,7 +114,7 @@ class BluetoothController: NSObject {
         }
         
         func run() -> Void {
-            peripheral.discoverServices([BluetoothController.serviceUUID])
+            peripheral.discoverServices([GoDiceBLEController.serviceUUID])
         }
         
         func fetchColor() -> Void {
@@ -104,18 +124,18 @@ class BluetoothController: NSObject {
         func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
             if let services = peripheral.services {
                 for service in services {
-                    peripheral.discoverCharacteristics([BluetoothController.writeUUID, BluetoothController.notifyUUID], for: service)
+                    peripheral.discoverCharacteristics([GoDiceBLEController.writeUUID, GoDiceBLEController.notifyUUID], for: service)
                 }
             }
         }
         
         func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
             if let characteristics = service.characteristics {
-                guard let notifyCH = characteristics.first(where: { $0.uuid == BluetoothController.notifyUUID }) else {
+                guard let notifyCH = characteristics.first(where: { $0.uuid == GoDiceBLEController.notifyUUID }) else {
                     print("Unable to find notify characteristic")
                     return
                 }
-                guard let writeCH = characteristics.first(where: { $0.uuid == BluetoothController.writeUUID }) else {
+                guard let writeCH = characteristics.first(where: { $0.uuid == GoDiceBLEController.writeUUID }) else {
                     print("Unable to find write characteristic")
                     return
                 }
@@ -126,13 +146,13 @@ class BluetoothController: NSObject {
             updateCallback(peripheral, .Connected)
         }
         
-        private func rollVector(_ rawData: Data) -> [UInt8]? {
+        private func rollVector(_ rawData: Data) -> DieVector? {
             guard let firstByte = rawData.first, firstByte == 83 else {
                 print("Bad raw data \(rawData)")
                 return nil
             }
             
-            return [UInt8](rawData.advanced(by: 1))
+            return DieVector([UInt8](rawData.advanced(by: 1)))
         }
         
         func possibleDieRollData(rawData: Data) -> DiceResults? {
@@ -164,16 +184,16 @@ class BluetoothController: NSObject {
                 }
                 
             case 83:
-                return rollVector(rawData).map { .Stable(values: $0) }
+                return rollVector(rawData).map { .Stable(vector: $0) }
                 
             case 70:
-                return rollVector(rawData.advanced(by: 1)).map { .FakeStable(values: $0) }
+                return rollVector(rawData.advanced(by: 1)).map { .FakeStable(vector: $0) }
                 
             case 84:
-                return rollVector(rawData.advanced(by: 1)).map { .TiltStable(values: $0) }
+                return rollVector(rawData.advanced(by: 1)).map { .TiltStable(vector: $0) }
                 
             case 77:
-                return rollVector(rawData.advanced(by: 1)).map { .MoveStable(values: $0) }
+                return rollVector(rawData.advanced(by: 1)).map { .MoveStable(vector: $0) }
                 
             default:
                 print("Unknown first byte \(firstByte)")
@@ -197,7 +217,7 @@ class BluetoothController: NSObject {
     }
 }
 
-extension BluetoothController: CBCentralManagerDelegate, CBPeripheralDelegate {
+extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
@@ -260,7 +280,7 @@ extension BluetoothController: CBCentralManagerDelegate, CBPeripheralDelegate {
         switch (results) {
         case .Connected:
             if colors[name] == nil {
-                sessions[name]?.fetchColor()
+                session.fetchColor()
             }
             break
             

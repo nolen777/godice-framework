@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    let btc = BluetoothController()
+    let btc = GoDiceBLEController()
     @State var listenForBluetooth: Bool
     
     var body: some View {
