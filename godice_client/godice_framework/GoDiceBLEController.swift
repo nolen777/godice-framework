@@ -22,39 +22,24 @@ class GoDiceBLEController: NSObject {
     typealias DiceVectorCallback = (String, UInt8, UInt8, UInt8) -> Void
     
     private var diceVectorCallback: DiceVectorCallback = {_,_,_,_ in }
-    private var listening: Bool = false
     
     func setDiceVectorCallback(cb: @escaping DiceVectorCallback) -> Void {
         diceVectorCallback = cb
     }
     
-    func startListening() -> Void {
-        guard !listening else {
-            return
-        }
-        
-        listening = true
-        maybeStartScan()
-    }
-    
-    func stopListening() -> Void {
-        guard listening else {
-            return
-        }
-        
-        listening = false
-        maybeStopScan()
-    }
-    
-    func setListening(to: Bool) -> Void {
-        if (to) {
-            startListening()
-        }
-        else {
-            stopListening()
+    var listening: Bool = false {
+        didSet {
+            guard listening != oldValue else {
+                return
+            }
+            if listening {
+                maybeStartScan()
+            } else {
+                maybeStopScan()
+            }
         }
     }
-    
+
     override init() {
         centralManager = CBCentralManager(delegate: nil, queue: queue)
         super.init()

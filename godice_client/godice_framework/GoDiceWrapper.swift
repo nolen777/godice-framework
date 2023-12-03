@@ -21,10 +21,10 @@ func SetDiceVectorCallback(cb: @escaping (UnsafePointer<CChar>, UInt8, UInt8, UI
 
 @_cdecl("start_listening")
 func StartListening() -> Void {
-    btc.startListening()
+    btc.listening = true
 }
 
 @_cdecl("stop_listening")
 func StopListening() -> Void {
-    btc.stopListening()
+    btc.listening = false
 }
