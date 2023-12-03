@@ -5,9 +5,7 @@
 //  Created by Dan Crosby on 12/2/23.
 //
 
-//#import <Foundation/Foundation.h>
 #include "UnityBridge.h"
-//#import "godice_client_lib-Swift.h"
 
 extern void set_dice_vector_callback(void (^)(const char*, uint8_t, uint8_t, uint8_t));
 extern void start_listening();

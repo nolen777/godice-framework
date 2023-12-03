@@ -24,11 +24,11 @@ class GoDiceBLEController: NSObject {
     private var diceVectorCallback: DiceVectorCallback = {_,_,_,_ in }
     private var listening: Bool = false
     
-    @objc func setDiceVectorCallback(cb: @escaping DiceVectorCallback) -> Void {
+    func setDiceVectorCallback(cb: @escaping DiceVectorCallback) -> Void {
         diceVectorCallback = cb
     }
     
-    @objc func startListening() -> Void {
+    func startListening() -> Void {
         guard !listening else {
             return
         }
@@ -37,7 +37,7 @@ class GoDiceBLEController: NSObject {
         maybeStartScan()
     }
     
-    @objc func stopListening() -> Void {
+    func stopListening() -> Void {
         guard listening else {
             return
         }
