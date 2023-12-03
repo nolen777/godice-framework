@@ -22,14 +22,14 @@ public class DicePanelController : MonoBehaviour {
         diceInterface = GetComponent<DiceInterface>();
         mainText.text = "Hello, World!\n";
 
-        diceInterface.callback = ReceiveRollCallback;
+        diceInterface.rollCallback = ReceiveRollCallback;
         diceInterface.StartListening();
     }
 
-    void ReceiveRollCallback(string name, byte[] bytes) {
+    void ReceiveRollCallback(string name, byte x, byte y, byte z) {
         lock (_diceRolls) {
-            Debug.Log($"Received roll callback: {name} {bytes.Length} bytes\n");
-            _diceRolls.Add(new DiceRoll { name = name, x = 0, y = 0, z = 0 });
+            Debug.Log($"Received roll callback: {name} {x} {y} {z}\n");
+            _diceRolls.Add(new DiceRoll { name = name, x = x, y = y, z = z });
         }
     }
 
