@@ -17,8 +17,8 @@ extern “C” {
 typedef void (*GDVectorCallbackFunction)(const char* name, uint8_t x, uint8_t y, uint8_t z);
 
 void godice_set_roll_callback(GDVectorCallbackFunction callback);
-void godice_start_listening();
-void godice_stop_listening();
+void godice_start_listening(void);
+void godice_stop_listening(void);
     
 #ifdef __cplusplus
 }
