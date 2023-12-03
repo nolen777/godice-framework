@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include "UnityBridge.h"
 
-void callback(const char* name, uint8_t x, uint8_t y, uint8_t z);
+void callback(const char* name, uint32_t data_size, uint8_t* data);
 
 int main(int argc, const char * argv[]) {
     godice_set_roll_callback(callback);
@@ -20,6 +20,6 @@ int main(int argc, const char * argv[]) {
     return 0;
 }
 
-void callback(const char* name, uint8_t x, uint8_t y, uint8_t z) {
-    printf("Received (%d, %d, %d) for %s\n", x, y, z, name);
+void callback(const char* name, uint32_t data_size, uint8_t* data) {
+    printf("Received %d bytes for %s\n", data_size, name);
 }

@@ -7,13 +7,13 @@
 
 #include "UnityBridge.h"
 
-extern void set_data_callback(void (^)(const char*, uint32_t data_size, uint8_t* data));
+extern void set_dice_vector_callback(void (^)(const char*, uint8_t, uint8_t, uint8_t));
 extern void start_listening(void);
 extern void stop_listening(void);
 
 void godice_set_roll_callback(GDVectorCallbackFunction callback) {
-    set_data_callback(^(const char* name, uint32_t data_size, uint8_t* data) {
-        callback(name, data_size, data);
+    set_dice_vector_callback(^(const char* name, uint8_t x, uint8_t y, uint8_t z) {
+        callback(name, x, y, z);
     });
 }
 

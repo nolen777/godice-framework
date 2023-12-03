@@ -5,8 +5,6 @@
 //  Created by Dan Crosby on 12/1/23.
 //
 
-import Foundation
-
 private let btc = GoDiceBLEController()
 
 @_cdecl("get_controller")
@@ -14,14 +12,10 @@ internal func GetController() -> GoDiceBLEController {
     return btc;
 }
 
-@_cdecl("set_data_callback")
-func SetDataCallback(cb: @escaping (UnsafePointer<CChar>, UInt32, UnsafePointer<UInt8>?) -> Void) -> Void {
-    btc.setDataCallback(cb: { (name: String, data: Data?) in
-        if let data = data {
-            cb(name.cString(using: .utf8)!, UInt32(data.count), [UInt8](data))
-        } else {
-            cb(name.cString(using: .utf8)!, 0, nil)
-        }
+@_cdecl("set_dice_vector_callback")
+func SetDiceVectorCallback(cb: @escaping (UnsafePointer<CChar>, UInt8, UInt8, UInt8) -> Void) -> Void {
+    btc.setDiceVectorCallback(cb: { (name: String, x: UInt8, y: UInt8, z: UInt8) in
+        cb(name.cString(using: .utf8)!, x, y, z)
     })
 }
 

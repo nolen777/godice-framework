@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     let btc = GoDiceBLEController()
+    let parser = GoDiceDataParser()
     @State var listenForBluetooth: Bool
     
     var body: some View {
@@ -20,8 +21,19 @@ struct ContentView: View {
             }
         }
         .padding().onAppear {
-            btc.setUp()
             btc.listening = listenForBluetooth
+            
+            btc.setDataCallback { (name, data) in
+                if let data = data {
+                    if let result = parser.possibleDieRollData(rawData: data) {
+                        print("\(name) received \(result)")
+                    } else {
+                        print("\(name) received \(data.count) but failed to parse")
+                    }
+                } else {
+                    print("Connected: \(name)")
+                }
+            }
         }
     }
 }

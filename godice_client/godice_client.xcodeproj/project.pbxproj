@@ -26,6 +26,7 @@
 		AF155E5C2B1CDCC000335215 /* GoDiceBLEController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E152B18D9F600335215 /* GoDiceBLEController.swift */; };
 		AF155E5D2B1CDCC200335215 /* GoDiceWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */; };
 		AF155E5E2B1CDCC400335215 /* UnityBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = AF155E3F2B1BF65D00335215 /* UnityBridge.c */; };
+		AF155E602B1D0A2C00335215 /* GoDiceDataParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E5F2B1D0A2C00335215 /* GoDiceDataParser.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +68,7 @@
 		AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GoDiceWrapper.swift; sourceTree = "<group>"; };
 		AF155E482B1CDB6200335215 /* GodiceClient.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = GodiceClient.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF155E582B1CDCB800335215 /* GodiceBundle.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GodiceBundle.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF155E5F2B1D0A2C00335215 /* GoDiceDataParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoDiceDataParser.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,6 +144,7 @@
 				AF155E0A2B18D9B600335215 /* Assets.xcassets */,
 				AF155E0F2B18D9B600335215 /* godice_client.entitlements */,
 				AF155E0C2B18D9B600335215 /* Preview Content */,
+				AF155E5F2B1D0A2C00335215 /* GoDiceDataParser.swift */,
 			);
 			path = godice_client;
 			sourceTree = "<group>";
@@ -377,6 +380,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AF155E602B1D0A2C00335215 /* GoDiceDataParser.swift in Sources */,
 				AF155E092B18D9B600335215 /* ContentView.swift in Sources */,
 				AF155E162B18D9F600335215 /* GoDiceBLEController.swift in Sources */,
 				AF155E182B18E67900335215 /* DataHexStringExtension.swift in Sources */,
