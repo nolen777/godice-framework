@@ -4,11 +4,9 @@
 #undef USE_SWIFT_INTERFACE
 #endif
 
-using System.Collections;
-using System.Collections.Generic;
+using System;
 using System.Runtime.InteropServices;
 using AOT;
-using UnityEditor.VersionControl;
 using UnityEngine;
 
 public class DiceInterface : MonoBehaviour
@@ -26,28 +24,30 @@ public class DiceInterface : MonoBehaviour
     [DllImport (dllName: "GodiceBundle", EntryPoint = "godice_stop_listening")]
     private static extern void GodiceStopListening();
   
-    [DllImport (dllName: "GodiceBundle", EntryPoint = "godice_set_roll_callback")]
-    private static extern void GodiceSetRollCallback(DelegateMessage delegateMessage);
+    [DllImport (dllName: "GodiceBundle", EntryPoint = "godice_set_callback")]
+    private static extern void GodiceSetCallback(DelegateMessage delegateMessage);
     
-    private delegate void DelegateMessage(string name, byte x, byte y, byte z);
+    private delegate void DelegateMessage(string name, UInt32 byteCount, IntPtr bytes);
  
     [MonoPInvokeCallback(typeof(DelegateMessage))] 
-    private static void DelegateMessageReceived(string name, byte x, byte y, byte z) {
+    private static void DelegateMessageReceived(string name, UInt32 byteCount, IntPtr bytes) {
         if (_singleton != null && _singleton.callback != null) {
-            _singleton.callback(name, x, y, z);
+            byte[] array = new byte[byteCount];
+            Marshal.Copy((IntPtr)bytes, array, 0, (int)byteCount);
+            _singleton.callback(name, array);
         }
     }
 #endif
 
     private static DiceInterface _singleton = null;
     
-    public delegate void RollCallback(string name, byte x, byte y, byte z);
+    public delegate void RollCallback(string name, Byte[] bytes);
     public RollCallback callback = null;
     
     public void StartListening() {
 #if USE_SWIFT_INTERFACE
         GodiceStartListening();
-        GodiceSetRollCallback(DelegateMessageReceived);
+        GodiceSetCallback(DelegateMessageReceived);
 #else
         Debug.Log("StartListening() called");
 #endif

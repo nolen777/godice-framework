@@ -11,7 +11,7 @@ extern void set_data_callback(void (^)(const char*, uint32_t data_size, uint8_t*
 extern void start_listening(void);
 extern void stop_listening(void);
 
-void godice_set_roll_callback(GDVectorCallbackFunction callback) {
+void godice_set_callback(GDVectorCallbackFunction callback) {
     set_data_callback(^(const char* name, uint32_t data_size, uint8_t* data) {
         callback(name, data_size, data);
     });
