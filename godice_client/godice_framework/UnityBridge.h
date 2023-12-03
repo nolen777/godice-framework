@@ -8,6 +8,8 @@
 #ifndef UnityBridge_h
 #define UnityBridge_h
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern “C” {
 #endif

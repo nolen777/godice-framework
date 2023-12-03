@@ -17,7 +17,7 @@
 		AF155E2F2B1BB0FA00335215 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = AF155E2E2B1BB0FA00335215 /* main.c */; };
 		AF155E362B1BB13C00335215 /* libgodice_client_lib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = AF155E1D2B1AB67500335215 /* libgodice_client_lib.a */; };
 		AF155E3A2B1BEAC100335215 /* UnityBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = AF155E382B1BEAC100335215 /* UnityBridge.h */; };
-		AF155E402B1BF65D00335215 /* UnityBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = AF155E3F2B1BF65D00335215 /* UnityBridge.m */; };
+		AF155E402B1BF65D00335215 /* UnityBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = AF155E3F2B1BF65D00335215 /* UnityBridge.c */; };
 		AF155E422B1C16CF00335215 /* GoDiceWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */; };
 /* End PBXBuildFile section */
 
@@ -56,8 +56,7 @@
 		AF155E2C2B1BB0FA00335215 /* godice_c_test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = godice_c_test; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF155E2E2B1BB0FA00335215 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		AF155E382B1BEAC100335215 /* UnityBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UnityBridge.h; sourceTree = "<group>"; };
-		AF155E3E2B1BF62F00335215 /* godice_client_lib-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "godice_client_lib-Bridging-Header.h"; sourceTree = "<group>"; };
-		AF155E3F2B1BF65D00335215 /* UnityBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = UnityBridge.m; sourceTree = "<group>"; };
+		AF155E3F2B1BF65D00335215 /* UnityBridge.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = UnityBridge.c; sourceTree = "<group>"; };
 		AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GoDiceWrapper.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -150,8 +149,7 @@
 				AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */,
 				AF155E152B18D9F600335215 /* GoDiceBLEController.swift */,
 				AF155E382B1BEAC100335215 /* UnityBridge.h */,
-				AF155E3F2B1BF65D00335215 /* UnityBridge.m */,
-				AF155E3E2B1BF62F00335215 /* godice_client_lib-Bridging-Header.h */,
+				AF155E3F2B1BF65D00335215 /* UnityBridge.c */,
 			);
 			path = godice_framework;
 			sourceTree = "<group>";
@@ -293,7 +291,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AF155E422B1C16CF00335215 /* GoDiceWrapper.swift in Sources */,
-				AF155E402B1BF65D00335215 /* UnityBridge.m in Sources */,
+				AF155E402B1BF65D00335215 /* UnityBridge.c in Sources */,
 				AF155E212B1AB6F200335215 /* GoDiceBLEController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
