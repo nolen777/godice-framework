@@ -12,22 +12,46 @@ class GoDiceBLEController: NSObject {
     private let centralManager: CBCentralManager
     private let queue = DispatchQueue(label: "goDiceBLEControllerDelegateQueue")
     
-    static let serviceUUID = CBUUID(string: "6e400001-b5a3-f393-e0a9-e50e24dcca9e")
-    static let writeUUID = CBUUID(string: "6e400002-b5a3-f393-e0a9-e50e24dcca9e")
-    static let notifyUUID = CBUUID(string: "6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+    private static let serviceUUID = CBUUID(string: "6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+    private static let writeUUID = CBUUID(string: "6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+    private static let notifyUUID = CBUUID(string: "6e400003-b5a3-f393-e0a9-e50e24dcca9e")
     
-    var colors: [String : DiceColor] = [:]
-    var sessions: [String : DiceSession] = [:]
-    var listening: Bool = false {
-        didSet {
-            guard listening != oldValue else {
-                return
-            }
-            if listening {
-                maybeStartScan()
-            } else {
-                maybeStopScan()
-            }
+    private var colors: [String : DiceColor] = [:]
+    private var sessions: [String : DiceSession] = [:]
+    
+    typealias DiceVectorCallback = (String, UInt8, UInt8, UInt8) -> Void
+    
+    private var diceVectorCallback: DiceVectorCallback = {_,_,_,_ in }
+    private var listening: Bool = false
+    
+    @objc func setDiceVectorCallback(cb: @escaping DiceVectorCallback) -> Void {
+        diceVectorCallback = cb
+    }
+    
+    @objc func startListening() -> Void {
+        guard !listening else {
+            return
+        }
+        
+        listening = true
+        maybeStartScan()
+    }
+    
+    @objc func stopListening() -> Void {
+        guard listening else {
+            return
+        }
+        
+        listening = false
+        maybeStopScan()
+    }
+    
+    func setListening(to: Bool) -> Void {
+        if (to) {
+            startListening()
+        }
+        else {
+            stopListening()
         }
     }
     
@@ -101,7 +125,7 @@ class GoDiceBLEController: NSObject {
         case MoveStable(vector: DieVector)
     }
     
-    class DiceSession: NSObject, CBPeripheralDelegate {
+    private class DiceSession: NSObject, CBPeripheralDelegate {
         let updateCallback: (CBPeripheral, DiceResults) -> Void
         let peripheral: CBPeripheral
         var writeCharacteristic: CBCharacteristic!
@@ -300,7 +324,8 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             let .FakeStable(values),
             let .TiltStable(values),
             let .MoveStable(values):
-            print("received values \(values) for color \(colors[name] ?? .Unknown)")
+         //   print("received values \(values) for color \(colors[name] ?? .Unknown)")
+            diceVectorCallback(name, values.x, values.y, values.z)
             break
         }
     }

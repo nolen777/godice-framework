@@ -6,16 +6,20 @@
 //
 
 #include <stdio.h>
+#include "UnityBridge.h"
 
-//extern void set_up(void);
-extern void start_listening(void);
+void callback(const char* name, uint8_t x, uint8_t y, uint8_t z);
 
 int main(int argc, const char * argv[]) {
-   // set_up();
-    start_listening();
+    godice_set_roll_callback(callback);
+    godice_start_listening();
     printf("Hello, World!\n");
     
     while(1);
     
     return 0;
+}
+
+void callback(const char* name, uint8_t x, uint8_t y, uint8_t z) {
+    printf("Received (%d, %d, %d) for %s\n", x, y, z, name);
 }
