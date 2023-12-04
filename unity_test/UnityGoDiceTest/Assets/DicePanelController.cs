@@ -26,6 +26,10 @@ public class DicePanelController : MonoBehaviour {
         diceInterface.StartListening();
     }
 
+    void OnDestroy() {
+        diceInterface.StopListening();
+    }
+
     void ReceiveRollCallback(string name, byte x, byte y, byte z) {
         lock (_diceRolls) {
             Debug.Log($"Received roll callback: {name} {x} {y} {z}\n");

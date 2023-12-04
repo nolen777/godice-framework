@@ -1,5 +1,7 @@
-#if UNITY_IOS || UNITY_MACOSX || UNITY_EDITOR_OSX
+#if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
 #define USE_SWIFT_INTERFACE
+#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#define USE_WINDOWS_INTERFACE
 #else
 #undef USE_SWIFT_INTERFACE
 #endif
@@ -13,22 +15,50 @@ using UnityEngine;
 public class DiceInterface : MonoBehaviour
 {
 #if UNITY_IOS
-    [DllImport ("__Internal")]
-  private static extern void godice_start_listening();
-  
-    [DllImport ("__Internal")]
-  private static extern void godice_stop_listening ();
-#else
-    [DllImport (dllName: "GodiceBundle", EntryPoint="godice_start_listening")]
+    const string dllName = "__Internal";
+#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+    const string dllName = "GodiceBundle";
+#endif
+    
+    private delegate void DelegateMessage(string name, List<byte> bytes);
+    
+#if USE_SWIFT_INTERFACE
+    private delegate void MonoDelegateMessage(string name, UInt32 byteCount, IntPtr bytePtr);
+    
+    [DllImport (dllName: dllName, EntryPoint="godice_start_listening")]
     private static extern void GodiceStartListening();
   
-    [DllImport (dllName: "GodiceBundle", EntryPoint = "godice_stop_listening")]
+    [DllImport (dllName: dllName, EntryPoint = "godice_stop_listening")]
     private static extern void GodiceStopListening();
   
-    [DllImport (dllName: "GodiceBundle", EntryPoint = "godice_set_callback")]
-    private static extern void GodiceSetCallback(DelegateMessage delegateMessage);
+    [DllImport (dllName: dllName, EntryPoint = "godice_set_callback")]
+    private static extern void GodiceSetCallback(MonoDelegateMessage monoDelegateMessage);
+
+    private static List<byte> bytesFromRawPointer(UInt32 byteCount, IntPtr bytes) {
+        byte[] array = new byte[byteCount];
+        Marshal.Copy(bytes, array, 0, (int)byteCount);
+        return new List<byte>(array);
+    }
     
-    private delegate void DelegateMessage(string name, UInt32 byteCount, IntPtr bytes);
+    [MonoPInvokeCallback(typeof(MonoDelegateMessage))]
+    private static void MonoDelegateMessageReceived(string name, UInt32 byteCount, IntPtr bytePtr) {
+        DelegateMessageReceived(name, bytesFromRawPointer(byteCount, bytePtr));
+    }
+    
+#elif USE_WINDOWS_INTERFACE
+    private static void GodiceStartListening() {
+        Debug.Log("GodiceStartListening() called but unsupported");
+    }
+    
+    private static void GodiceStopListening() {
+        Debug.Log("GodiceStartListening() called but unsupported");
+    }
+    
+    private static void GodiceSetCallback(DelegateMessage delegateMessage) {
+        Debug.Log("GodiceSetCallback() called but unsupported");
+    }
+#else
+#endif
 
     private static byte[] rollVector(List<byte> rawData) {
         if (rawData.Count < 1) {
@@ -46,27 +76,27 @@ public class DiceInterface : MonoBehaviour
         }
         return new byte[] { rawData[1], rawData[2], rawData[3] };
     }
-
-    private static List<byte> bytesFromRawPointer(UInt32 byteCount, IntPtr bytes) {
-        byte[] array = new byte[byteCount];
-        Marshal.Copy(bytes, array, 0, (int)byteCount);
-        return new List<byte>(array);
-    }
     
-    [MonoPInvokeCallback(typeof(DelegateMessage))] 
-    private static void DelegateMessageReceived(string name, UInt32 byteCount, IntPtr bytePtr) {
+    private static void DelegateMessageReceived(string name, List<byte> byteList) {
         if (_singleton != null) {
-            if (byteCount == 0) {
+            if (byteList.Count == 0) {
                 if (_singleton.connectionCallback != null) {
                     _singleton.connectionCallback(name);
                     return;
                 }
             } else {
-                List<byte> byteList = bytesFromRawPointer(byteCount, bytePtr);
-
                 byte firstByte = byteList[0];
 
                 switch (firstByte) {
+                    case 82:
+                        // Roll started
+                        break;
+                    case 66:
+                        // Battery level
+                        break;
+                    case 67:
+                        // Color (fetched)
+                        break;
                     case 83: {
                         var roll = rollVector(byteList);
                         if (roll != null && _singleton.rollCallback != null) {
@@ -91,7 +121,6 @@ public class DiceInterface : MonoBehaviour
             }
         }
     }
-#endif
 
     private static DiceInterface _singleton = null;
 
@@ -104,11 +133,19 @@ public class DiceInterface : MonoBehaviour
     public void StartListening() {
 #if USE_SWIFT_INTERFACE
         GodiceStartListening();
-        GodiceSetCallback(DelegateMessageReceived);
+        GodiceSetCallback(MonoDelegateMessageReceived);
 #else
         Debug.Log("StartListening() called");
 #endif
-    }      
+    }
+    
+    public void StopListening() {
+#if USE_SWIFT_INTERFACE
+        GodiceStopListening();
+#else
+        Debug.Log("StopListening() called");
+#endif
+    }
     
     // Start is called before the first frame update
     void Start() {
