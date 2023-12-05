@@ -3,60 +3,18 @@
 #elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 #define USE_WINDOWS_INTERFACE
 #else
-#undef USE_SWIFT_INTERFACE
 #endif
 
-using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using AOT;
 using UnityEngine;
+using UnityGoDiceInterface;
 
 public class DiceInterface : MonoBehaviour
 {
-#if UNITY_IOS
-    const string dllName = "__Internal";
-#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-    const string dllName = "GodiceBundle";
-#endif
-    
-    private delegate void DelegateMessage(string name, List<byte> bytes);
-    
 #if USE_SWIFT_INTERFACE
-    private delegate void MonoDelegateMessage(string name, UInt32 byteCount, IntPtr bytePtr);
-    
-    [DllImport (dllName: dllName, EntryPoint="godice_start_listening")]
-    private static extern void GodiceStartListening();
-  
-    [DllImport (dllName: dllName, EntryPoint = "godice_stop_listening")]
-    private static extern void GodiceStopListening();
-  
-    [DllImport (dllName: dllName, EntryPoint = "godice_set_callback")]
-    private static extern void GodiceSetCallback(MonoDelegateMessage monoDelegateMessage);
-
-    private static List<byte> bytesFromRawPointer(UInt32 byteCount, IntPtr bytes) {
-        byte[] array = new byte[byteCount];
-        Marshal.Copy(bytes, array, 0, (int)byteCount);
-        return new List<byte>(array);
-    }
-    
-    [MonoPInvokeCallback(typeof(MonoDelegateMessage))]
-    private static void MonoDelegateMessageReceived(string name, UInt32 byteCount, IntPtr bytePtr) {
-        DelegateMessageReceived(name, bytesFromRawPointer(byteCount, bytePtr));
-    }
-    
+    IDiceInterfaceImports diceInterfaceImports = new AppleDiceInterfaceImports();
 #elif USE_WINDOWS_INTERFACE
-    private static void GodiceStartListening() {
-        Debug.Log("GodiceStartListening() called but unsupported");
-    }
-    
-    private static void GodiceStopListening() {
-        Debug.Log("GodiceStartListening() called but unsupported");
-    }
-    
-    private static void GodiceSetCallback(DelegateMessage delegateMessage) {
-        Debug.Log("GodiceSetCallback() called but unsupported");
-    }
+    IDiceInterfaceImports diceInterfaceImports = new WindowsDiceInterfaceImports();
 #else
 #endif
 
@@ -131,20 +89,12 @@ public class DiceInterface : MonoBehaviour
     public RollCallback rollCallback = null;
     
     public void StartListening() {
-#if USE_SWIFT_INTERFACE
-        GodiceStartListening();
-        GodiceSetCallback(MonoDelegateMessageReceived);
-#else
-        Debug.Log("StartListening() called");
-#endif
+        diceInterfaceImports.StartListening();
+        diceInterfaceImports.SetCallback(DelegateMessageReceived);
     }
     
     public void StopListening() {
-#if USE_SWIFT_INTERFACE
-        GodiceStopListening();
-#else
-        Debug.Log("StopListening() called");
-#endif
+        diceInterfaceImports.StopListening();
     }
     
     // Start is called before the first frame update
