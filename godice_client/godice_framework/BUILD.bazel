@@ -2,21 +2,23 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_framework")
 
 swift_library(
-    name = "go_dice_swift_framework",
+    name = "lib",
     srcs = [
         "GoDiceBLEController.swift",
         "GoDiceWrapper.swift",
     ],
+    module_name = "GodiceClient",
+    visibility = ["//godice_client/GodiceClientApp:__pkg__"],
     deps = [],
 )
 
-#macos_framework(
-#    name = "godice_client",
-#    minimum_os_version = "10.14",
-#    #   hdrs = ["GoDiceSwiftFramework.h"],
-#    module_name = "GodiceClient",
-#    deps = [":go_dice_swift_framework"],
-#)
+macos_framework(
+    name = "framework",
+    infoplists = ["Info.plist"],
+    minimum_os_version = "11.0",
+    visibility = ["//godice_client/GodiceClientApp:__pkg__"],
+    deps = [":unity_bridge"],
+)
 
 cc_library(
     name = "unity_bridge",
@@ -24,6 +26,6 @@ cc_library(
     hdrs = ["UnityBridge.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":go_dice_swift_framework",
+        ":lib",
     ],
 )
