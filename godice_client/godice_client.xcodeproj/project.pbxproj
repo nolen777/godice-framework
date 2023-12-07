@@ -7,17 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AF155E072B18D9B600335215 /* godice_clientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E062B18D9B600335215 /* godice_clientApp.swift */; };
-		AF155E092B18D9B600335215 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E082B18D9B600335215 /* ContentView.swift */; };
-		AF155E0B2B18D9B600335215 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AF155E0A2B18D9B600335215 /* Assets.xcassets */; };
-		AF155E0E2B18D9B600335215 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AF155E0D2B18D9B600335215 /* Preview Assets.xcassets */; };
-		AF155E162B18D9F600335215 /* GoDiceBLEController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E152B18D9F600335215 /* GoDiceBLEController.swift */; };
-		AF155E182B18E67900335215 /* DataHexStringExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E172B18E67900335215 /* DataHexStringExtension.swift */; };
-		AF155E212B1AB6F200335215 /* GoDiceBLEController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E152B18D9F600335215 /* GoDiceBLEController.swift */; };
+		AF028AA12B2210310018C53E /* GodiceClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF028AA02B2210310018C53E /* GodiceClientApp.swift */; };
+		AF028AA52B2210320018C53E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AF028AA42B2210320018C53E /* Assets.xcassets */; };
+		AF028AA82B2210320018C53E /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AF028AA72B2210320018C53E /* Preview Assets.xcassets */; };
+		AF028AAD2B2210440018C53E /* DataHexStringExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E172B18E67900335215 /* DataHexStringExtension.swift */; };
+		AF028AAE2B22104F0018C53E /* GoDiceDataParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E5F2B1D0A2C00335215 /* GoDiceDataParser.swift */; };
+		AF028AAF2B22106A0018C53E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E082B18D9B600335215 /* ContentView.swift */; };
+		AF028AB02B2210A20018C53E /* GodiceClient.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF155E482B1CDB6200335215 /* GodiceClient.framework */; };
 		AF155E2F2B1BB0FA00335215 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = AF155E2E2B1BB0FA00335215 /* main.c */; };
-		AF155E3A2B1BEAC100335215 /* UnityBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = AF155E382B1BEAC100335215 /* UnityBridge.h */; };
-		AF155E402B1BF65D00335215 /* UnityBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = AF155E3F2B1BF65D00335215 /* UnityBridge.c */; };
-		AF155E422B1C16CF00335215 /* GoDiceWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */; };
 		AF155E4F2B1CDB8000335215 /* UnityBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = AF155E382B1BEAC100335215 /* UnityBridge.h */; };
 		AF155E502B1CDB8800335215 /* GoDiceWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */; };
 		AF155E512B1CDB8A00335215 /* GoDiceBLEController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E152B18D9F600335215 /* GoDiceBLEController.swift */; };
@@ -26,18 +23,7 @@
 		AF155E5C2B1CDCC000335215 /* GoDiceBLEController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E152B18D9F600335215 /* GoDiceBLEController.swift */; };
 		AF155E5D2B1CDCC200335215 /* GoDiceWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E412B1C16CF00335215 /* GoDiceWrapper.swift */; };
 		AF155E5E2B1CDCC400335215 /* UnityBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = AF155E3F2B1BF65D00335215 /* UnityBridge.c */; };
-		AF155E602B1D0A2C00335215 /* GoDiceDataParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF155E5F2B1D0A2C00335215 /* GoDiceDataParser.swift */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		AF155E332B1BB13200335215 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = AF155DFB2B18D9B600335215 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = AF155E1C2B1AB67500335215;
-			remoteInfo = godice_client_lib;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		AF155E2A2B1BB0FA00335215 /* CopyFiles */ = {
@@ -52,15 +38,19 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		AF155E032B18D9B600335215 /* godice_client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = godice_client.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		AF155E062B18D9B600335215 /* godice_clientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = godice_clientApp.swift; sourceTree = "<group>"; };
+		AF028A932B20BBA20018C53E /* BUILD.bazel */ = {isa = PBXFileReference; lastKnownFileType = text; path = BUILD.bazel; sourceTree = "<group>"; };
+		AF028A952B20C0600018C53E /* BUILD.bazel */ = {isa = PBXFileReference; lastKnownFileType = text; path = BUILD.bazel; sourceTree = "<group>"; };
+		AF028A962B20C3CC0018C53E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AF028A972B20C4D20018C53E /* BUILD.bazel */ = {isa = PBXFileReference; lastKnownFileType = text; path = BUILD.bazel; sourceTree = "<group>"; };
+		AF028A9E2B2210310018C53E /* GodiceClientApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GodiceClientApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF028AA02B2210310018C53E /* GodiceClientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GodiceClientApp.swift; sourceTree = "<group>"; };
+		AF028AA42B2210320018C53E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AF028AA72B2210320018C53E /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		AF028AA92B2210320018C53E /* GodiceClientApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GodiceClientApp.entitlements; sourceTree = "<group>"; };
+		AF028AB12B2211C90018C53E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		AF155E082B18D9B600335215 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		AF155E0A2B18D9B600335215 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		AF155E0D2B18D9B600335215 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
-		AF155E0F2B18D9B600335215 /* godice_client.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = godice_client.entitlements; sourceTree = "<group>"; };
 		AF155E152B18D9F600335215 /* GoDiceBLEController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GoDiceBLEController.swift; sourceTree = "<group>"; };
 		AF155E172B18E67900335215 /* DataHexStringExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DataHexStringExtension.swift; sourceTree = "<group>"; };
-		AF155E1D2B1AB67500335215 /* libgodice_client_lib.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libgodice_client_lib.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF155E2C2B1BB0FA00335215 /* godice_c_test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = godice_c_test; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF155E2E2B1BB0FA00335215 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		AF155E382B1BEAC100335215 /* UnityBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UnityBridge.h; sourceTree = "<group>"; };
@@ -72,17 +62,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		AF155E002B18D9B600335215 /* Frameworks */ = {
+		AF028A9B2B2210310018C53E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		AF155E1B2B1AB67500335215 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
+				AF028AB02B2210A20018C53E /* GodiceClient.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,13 +95,37 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		AF028A9F2B2210310018C53E /* GodiceClientApp */ = {
+			isa = PBXGroup;
+			children = (
+				AF028A972B20C4D20018C53E /* BUILD.bazel */,
+				AF028AB12B2211C90018C53E /* Info.plist */,
+				AF155E082B18D9B600335215 /* ContentView.swift */,
+				AF155E5F2B1D0A2C00335215 /* GoDiceDataParser.swift */,
+				AF155E172B18E67900335215 /* DataHexStringExtension.swift */,
+				AF028AA02B2210310018C53E /* GodiceClientApp.swift */,
+				AF028AA42B2210320018C53E /* Assets.xcassets */,
+				AF028AA92B2210320018C53E /* GodiceClientApp.entitlements */,
+				AF028AA62B2210320018C53E /* Preview Content */,
+			);
+			path = GodiceClientApp;
+			sourceTree = "<group>";
+		};
+		AF028AA62B2210320018C53E /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				AF028AA72B2210320018C53E /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
 		AF155DFA2B18D9B600335215 = {
 			isa = PBXGroup;
 			children = (
 				AF155E372B1BEA8D00335215 /* godice_framework */,
-				AF155E052B18D9B600335215 /* godice_client */,
 				AF155E2D2B1BB0FA00335215 /* godice_c_test */,
 				AF155E492B1CDB6200335215 /* GodiceClient */,
+				AF028A9F2B2210310018C53E /* GodiceClientApp */,
 				AF155E042B18D9B600335215 /* Products */,
 				AF155E352B1BB13C00335215 /* Frameworks */,
 			);
@@ -126,41 +134,19 @@
 		AF155E042B18D9B600335215 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AF155E032B18D9B600335215 /* godice_client.app */,
-				AF155E1D2B1AB67500335215 /* libgodice_client_lib.a */,
 				AF155E2C2B1BB0FA00335215 /* godice_c_test */,
 				AF155E482B1CDB6200335215 /* GodiceClient.framework */,
 				AF155E582B1CDCB800335215 /* GodiceBundle.bundle */,
+				AF028A9E2B2210310018C53E /* GodiceClientApp.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		AF155E052B18D9B600335215 /* godice_client */ = {
-			isa = PBXGroup;
-			children = (
-				AF155E172B18E67900335215 /* DataHexStringExtension.swift */,
-				AF155E062B18D9B600335215 /* godice_clientApp.swift */,
-				AF155E082B18D9B600335215 /* ContentView.swift */,
-				AF155E0A2B18D9B600335215 /* Assets.xcassets */,
-				AF155E0F2B18D9B600335215 /* godice_client.entitlements */,
-				AF155E0C2B18D9B600335215 /* Preview Content */,
-				AF155E5F2B1D0A2C00335215 /* GoDiceDataParser.swift */,
-			);
-			path = godice_client;
-			sourceTree = "<group>";
-		};
-		AF155E0C2B18D9B600335215 /* Preview Content */ = {
-			isa = PBXGroup;
-			children = (
-				AF155E0D2B18D9B600335215 /* Preview Assets.xcassets */,
-			);
-			path = "Preview Content";
 			sourceTree = "<group>";
 		};
 		AF155E2D2B1BB0FA00335215 /* godice_c_test */ = {
 			isa = PBXGroup;
 			children = (
 				AF155E2E2B1BB0FA00335215 /* main.c */,
+				AF028A952B20C0600018C53E /* BUILD.bazel */,
 			);
 			path = godice_c_test;
 			sourceTree = "<group>";
@@ -179,6 +165,8 @@
 				AF155E152B18D9F600335215 /* GoDiceBLEController.swift */,
 				AF155E382B1BEAC100335215 /* UnityBridge.h */,
 				AF155E3F2B1BF65D00335215 /* UnityBridge.c */,
+				AF028A932B20BBA20018C53E /* BUILD.bazel */,
+				AF028A962B20C3CC0018C53E /* Info.plist */,
 			);
 			path = godice_framework;
 			sourceTree = "<group>";
@@ -193,14 +181,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
-		AF155E192B1AB67500335215 /* Headers */ = {
-			isa = PBXHeadersBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				AF155E3A2B1BEAC100335215 /* UnityBridge.h in Headers */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		AF155E432B1CDB6200335215 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -212,39 +192,22 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		AF155E022B18D9B600335215 /* godice_client */ = {
+		AF028A9D2B2210310018C53E /* GodiceClientApp */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AF155E122B18D9B600335215 /* Build configuration list for PBXNativeTarget "godice_client" */;
+			buildConfigurationList = AF028AAA2B2210320018C53E /* Build configuration list for PBXNativeTarget "GodiceClientApp" */;
 			buildPhases = (
-				AF155DFF2B18D9B600335215 /* Sources */,
-				AF155E002B18D9B600335215 /* Frameworks */,
-				AF155E012B18D9B600335215 /* Resources */,
+				AF028A9A2B2210310018C53E /* Sources */,
+				AF028A9B2B2210310018C53E /* Frameworks */,
+				AF028A9C2B2210310018C53E /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = godice_client;
-			productName = godice_client;
-			productReference = AF155E032B18D9B600335215 /* godice_client.app */;
+			name = GodiceClientApp;
+			productName = GodiceClientApp;
+			productReference = AF028A9E2B2210310018C53E /* GodiceClientApp.app */;
 			productType = "com.apple.product-type.application";
-		};
-		AF155E1C2B1AB67500335215 /* godice_client_lib */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = AF155E1E2B1AB67500335215 /* Build configuration list for PBXNativeTarget "godice_client_lib" */;
-			buildPhases = (
-				AF155E192B1AB67500335215 /* Headers */,
-				AF155E1A2B1AB67500335215 /* Sources */,
-				AF155E1B2B1AB67500335215 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = godice_client_lib;
-			productName = godice_client_lib;
-			productReference = AF155E1D2B1AB67500335215 /* libgodice_client_lib.a */;
-			productType = "com.apple.product-type.library.static";
 		};
 		AF155E2B2B1BB0FA00335215 /* godice_c_test */ = {
 			isa = PBXNativeTarget;
@@ -257,7 +220,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				AF155E342B1BB13200335215 /* PBXTargetDependency */,
 			);
 			name = godice_c_test;
 			productName = godice_c_test;
@@ -309,12 +271,8 @@
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
-					AF155E022B18D9B600335215 = {
+					AF028A9D2B2210310018C53E = {
 						CreatedOnToolsVersion = 15.0;
-					};
-					AF155E1C2B1AB67500335215 = {
-						CreatedOnToolsVersion = 15.0;
-						LastSwiftMigration = 1500;
 					};
 					AF155E2B2B1BB0FA00335215 = {
 						CreatedOnToolsVersion = 15.0;
@@ -340,22 +298,21 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				AF155E022B18D9B600335215 /* godice_client */,
-				AF155E1C2B1AB67500335215 /* godice_client_lib */,
 				AF155E2B2B1BB0FA00335215 /* godice_c_test */,
 				AF155E472B1CDB6200335215 /* GodiceClient */,
 				AF155E572B1CDCB800335215 /* GodiceBundle */,
+				AF028A9D2B2210310018C53E /* GodiceClientApp */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		AF155E012B18D9B600335215 /* Resources */ = {
+		AF028A9C2B2210310018C53E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AF155E0E2B18D9B600335215 /* Preview Assets.xcassets in Resources */,
-				AF155E0B2B18D9B600335215 /* Assets.xcassets in Resources */,
+				AF028AA82B2210320018C53E /* Preview Assets.xcassets in Resources */,
+				AF028AA52B2210320018C53E /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -376,25 +333,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		AF155DFF2B18D9B600335215 /* Sources */ = {
+		AF028A9A2B2210310018C53E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AF155E602B1D0A2C00335215 /* GoDiceDataParser.swift in Sources */,
-				AF155E092B18D9B600335215 /* ContentView.swift in Sources */,
-				AF155E162B18D9F600335215 /* GoDiceBLEController.swift in Sources */,
-				AF155E182B18E67900335215 /* DataHexStringExtension.swift in Sources */,
-				AF155E072B18D9B600335215 /* godice_clientApp.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		AF155E1A2B1AB67500335215 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				AF155E422B1C16CF00335215 /* GoDiceWrapper.swift in Sources */,
-				AF155E402B1BF65D00335215 /* UnityBridge.c in Sources */,
-				AF155E212B1AB6F200335215 /* GoDiceBLEController.swift in Sources */,
+				AF028AAD2B2210440018C53E /* DataHexStringExtension.swift in Sources */,
+				AF028AA12B2210310018C53E /* GodiceClientApp.swift in Sources */,
+				AF028AAF2B22106A0018C53E /* ContentView.swift in Sources */,
+				AF028AAE2B22104F0018C53E /* GoDiceDataParser.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -428,15 +374,65 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		AF155E342B1BB13200335215 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = AF155E1C2B1AB67500335215 /* godice_client_lib */;
-			targetProxy = AF155E332B1BB13200335215 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
+		AF028AAB2B2210320018C53E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GodiceClientApp/GodiceClientApp.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"GodiceClientApp/Preview Content\"";
+				DEVELOPMENT_TEAM = UWJ88DX8WQ;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GodiceClientApp/Info.plist;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "For connecting to GoDice";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.eagle0.GodiceClientApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AF028AAC2B2210320018C53E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GodiceClientApp/GodiceClientApp.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"GodiceClientApp/Preview Content\"";
+				DEVELOPMENT_TEAM = UWJ88DX8WQ;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GodiceClientApp/Info.plist;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "For connecting to GoDice";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.eagle0.GodiceClientApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		AF155E102B18D9B600335215 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -552,89 +548,6 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
-			};
-			name = Release;
-		};
-		AF155E132B18D9B600335215 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = godice_client/godice_client.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"godice_client/Preview Content\"";
-				DEVELOPMENT_TEAM = UWJ88DX8WQ;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "For connecting to GoDice";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "net.eagle0.godice-client";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		AF155E142B18D9B600335215 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = godice_client/godice_client.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"godice_client/Preview Content\"";
-				DEVELOPMENT_TEAM = UWJ88DX8WQ;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "For connecting to GoDice";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "net.eagle0.godice-client";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
-		AF155E1F2B1AB67500335215 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = UWJ88DX8WQ;
-				EXECUTABLE_PREFIX = lib;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		AF155E202B1AB67500335215 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = UWJ88DX8WQ;
-				EXECUTABLE_PREFIX = lib;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -769,29 +682,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		AF028AAA2B2210320018C53E /* Build configuration list for PBXNativeTarget "GodiceClientApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF028AAB2B2210320018C53E /* Debug */,
+				AF028AAC2B2210320018C53E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		AF155DFE2B18D9B600335215 /* Build configuration list for PBXProject "godice_client" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AF155E102B18D9B600335215 /* Debug */,
 				AF155E112B18D9B600335215 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		AF155E122B18D9B600335215 /* Build configuration list for PBXNativeTarget "godice_client" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				AF155E132B18D9B600335215 /* Debug */,
-				AF155E142B18D9B600335215 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		AF155E1E2B1AB67500335215 /* Build configuration list for PBXNativeTarget "godice_client_lib" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				AF155E1F2B1AB67500335215 /* Debug */,
-				AF155E202B1AB67500335215 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

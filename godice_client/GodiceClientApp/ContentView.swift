@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import GodiceClient
 
 struct ContentView: View {
     let btc = GoDiceBLEController()
