@@ -1,0 +1,23 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+
+swift_library(
+    name = "GoDiceSwiftFramework",
+    srcs = [
+        "GoDiceBLEController.swift",
+        "GoDiceWrapper.swift",
+    ],
+    deps = [
+        #        "@build_bazel_rules_swift//swift:Foundation",
+        #        "@build_bazel_rules_swift//swift:Swift",
+    ],
+)
+
+cc_library(
+    name = "unity_bridge",
+    srcs = ["UnityBridge.c"],
+    hdrs = ["UnityBridge.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":GoDiceSwiftFramework",
+    ],
+)
