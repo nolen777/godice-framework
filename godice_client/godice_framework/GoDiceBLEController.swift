@@ -8,7 +8,7 @@
 import Foundation
 import CoreBluetooth
 
-class GoDiceBLEController: NSObject {
+public class GoDiceBLEController: NSObject {
     private let centralManager: CBCentralManager
     private let queue = DispatchQueue(label: "goDiceBLEControllerDelegateQueue")
     
@@ -18,15 +18,15 @@ class GoDiceBLEController: NSObject {
     
     private var sessions: [String : DiceSession] = [:]
     
-    typealias DataCallback = (String, Data?) -> Void
+    public typealias DataCallback = (String, Data?) -> Void
     
     private var dataCallback: DataCallback = {_,_ in }
     
-    func setDataCallback(cb: @escaping DataCallback) -> Void {
+    public func setDataCallback(cb: @escaping DataCallback) -> Void {
         dataCallback = cb
     }
     
-    var listening: Bool = false {
+    public var listening: Bool = false {
         didSet {
             guard listening != oldValue else {
                 return
@@ -39,7 +39,7 @@ class GoDiceBLEController: NSObject {
         }
     }
 
-    override init() {
+    public override init() {
         centralManager = CBCentralManager(delegate: nil, queue: queue)
         super.init()
         centralManager.delegate = self
@@ -125,7 +125,7 @@ class GoDiceBLEController: NSObject {
 }
 
 extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
             maybeStartScan()
@@ -151,7 +151,7 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
     
-    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
+    public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         guard let name = peripheral.name else {
             print("Peripheral has no name")
             return
@@ -161,7 +161,7 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
         centralManager.connect(peripheral)
     }
     
-    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         guard let name = peripheral.name else {
             print("Peripheral has no name")
             return

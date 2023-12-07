@@ -6,12 +6,12 @@
 //
 
 #include <stdio.h>
-#include "UnityBridge.h"
+#include "../godice_framework/UnityBridge.h"
 
 void callback(const char* name, uint32_t data_size, uint8_t* data);
 
 int main(int argc, const char * argv[]) {
-    godice_set_roll_callback(callback);
+    godice_set_callback(callback);
     godice_start_listening();
     printf("Hello, World!\n");
     
