@@ -1,5 +1,0 @@
-cc_binary(
-    name = "godice_c_test",
-    srcs = ["main.c"],
-    deps = ["//godice_client/godice_framework:unity_bridge"],
-)

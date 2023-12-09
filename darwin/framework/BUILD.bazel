@@ -8,7 +8,7 @@ swift_library(
         "GoDiceWrapper.swift",
     ],
     module_name = "GodiceClient",
-    visibility = ["//godice_client/GodiceClientApp:__pkg__"],
+    visibility = ["//darwin/GodiceClientApp:__pkg__"],
     deps = [],
 )
 
@@ -16,14 +16,14 @@ macos_framework(
     name = "framework",
     infoplists = ["Info.plist"],
     minimum_os_version = "11.0",
-    visibility = ["//godice_client/GodiceClientApp:__pkg__"],
-    deps = [":unity_bridge"],
+    visibility = ["//darwin/GodiceClientApp:__pkg__"],
+    deps = [":c_bridge"],
 )
 
 cc_library(
-    name = "unity_bridge",
-    srcs = ["UnityBridge.c"],
-    hdrs = ["UnityBridge.h"],
+    name = "c_bridge",
+    srcs = ["Bridge.c"],
+    hdrs = ["Bridge.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":lib",

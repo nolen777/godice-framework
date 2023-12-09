@@ -1,11 +1,12 @@
 //
-//  UnityBridge.c
-//  godice_client_lib
+//  Bridge.c
+//
+//  Provides C bridge functions for the Swift framework code.
 //
 //  Created by Dan Crosby on 12/2/23.
 //
 
-#include "UnityBridge.h"
+#include "Bridge.h"
 
 extern void set_data_callback(void (^)(const char*, uint32_t data_size, uint8_t* data));
 extern void start_listening(void);
