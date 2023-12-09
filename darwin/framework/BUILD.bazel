@@ -1,5 +1,5 @@
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
-load("@build_bazel_rules_apple//apple:macos.bzl", "macos_framework")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_bundle", "macos_framework")
 
 swift_library(
     name = "lib",
@@ -14,6 +14,16 @@ swift_library(
 
 macos_framework(
     name = "framework",
+    infoplists = ["Info.plist"],
+    minimum_os_version = "11.0",
+    visibility = ["//darwin/macos_app:__pkg__"],
+    deps = [":c_bridge"],
+)
+
+macos_bundle(
+    name = "DarwinGodiceBundle",
+    bundle_id = "net.eagle0.godice.darwin",
+    exported_symbols_lists = ["exported_symbols.lds"],
     infoplists = ["Info.plist"],
     minimum_os_version = "11.0",
     visibility = ["//darwin/macos_app:__pkg__"],
