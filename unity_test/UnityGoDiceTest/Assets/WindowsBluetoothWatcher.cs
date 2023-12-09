@@ -1,4 +1,4 @@
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#if ENABLE_WINMD_SUPPORT
 
 using System.Collections;
 using System.Collections.Generic;
