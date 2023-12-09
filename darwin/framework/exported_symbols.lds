@@ -1,0 +1,4 @@
+_godice_set_callback
+___godice_set_callback_block_invoke
+_godice_start_listening
+_godice_stop_listening
