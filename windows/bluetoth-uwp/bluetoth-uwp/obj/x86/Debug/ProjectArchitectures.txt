@@ -1,1 +1,0 @@
-C:\Users\dan\source\repos\bluetoth-uwp\bluetoth-uwp\bluetoth-uwp.csproj;x86
