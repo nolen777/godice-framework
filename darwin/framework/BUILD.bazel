@@ -8,7 +8,7 @@ swift_library(
         "GoDiceWrapper.swift",
     ],
     module_name = "GodiceClient",
-    visibility = ["//darwin/GodiceClientApp:__pkg__"],
+    visibility = ["//darwin/macos_app:__pkg__"],
     deps = [],
 )
 
@@ -16,7 +16,7 @@ macos_framework(
     name = "framework",
     infoplists = ["Info.plist"],
     minimum_os_version = "11.0",
-    visibility = ["//darwin/GodiceClientApp:__pkg__"],
+    visibility = ["//darwin/macos_app:__pkg__"],
     deps = [":c_bridge"],
 )
 

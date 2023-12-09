@@ -4,13 +4,16 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 swift_library(
     name = "app_library",
     srcs = glob(["*.swift"]),
-    #   deps = ["//godice_client/godice_framework:framework"],
+    deps = ["//darwin/framework"],
 )
 
 macos_application(
     name = "app",
     bundle_id = "com.godice.client",
+    frameworks = ["//darwin/framework"],
     infoplists = ["Info.plist"],
     minimum_os_version = "11.0",
-    deps = [":app_library"],
+    deps = [
+        ":app_library",
+    ],
 )
