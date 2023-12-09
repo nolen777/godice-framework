@@ -6,7 +6,7 @@
 //
 
 #include <stdio.h>
-#include "../godice_framework/UnityBridge.h"
+#include "../framework/Bridge.h"
 
 void callback(const char* name, uint32_t data_size, uint8_t* data);
 

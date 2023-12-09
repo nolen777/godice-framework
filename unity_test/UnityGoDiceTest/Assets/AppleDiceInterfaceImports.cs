@@ -11,20 +11,20 @@ using UnityEngine;
 namespace UnityGoDiceInterface {
     public class AppleDiceInterfaceImports : IDiceInterfaceImports {
 #if UNITY_IOS
-        private const string DLLName = "__Internal";
+        private const string BundleName = "__Internal";
 #elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-        private const string DLLName = "GodiceBundle";
+        private const string BundleName = "DarwinGodiceBundle";
 #endif
         
         private delegate void MonoDelegateMessage(string name, UInt32 byteCount, IntPtr bytePtr);
     
-        [DllImport (dllName: DLLName, EntryPoint="godice_start_listening")]
+        [DllImport (dllName: BundleName, EntryPoint = "godice_start_listening")]
         private static extern void _NativeBridgeStartListening();
   
-        [DllImport (dllName: DLLName, EntryPoint = "godice_stop_listening")]
+        [DllImport (dllName: BundleName, EntryPoint = "godice_stop_listening")]
         private static extern void _NativeBridgeStopListening();
   
-        [DllImport (dllName: DLLName, EntryPoint = "godice_set_callback")]
+        [DllImport (dllName: BundleName, EntryPoint = "godice_set_callback")]
         private static extern void _NativeBridgeSetCallback(MonoDelegateMessage monoDelegateMessage);
 
         private static List<byte> BytesFromRawPointer(UInt32 byteCount, IntPtr bytes) {

@@ -1,0 +1,3 @@
+_godice_set_callback
+_godice_start_listening
+_godice_stop_listening

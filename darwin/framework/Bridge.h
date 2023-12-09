@@ -1,12 +1,13 @@
 //
-//  UnityBridge.h
-//  godice_client_lib
+//  Bridge.h
+//
+//  Provides C bridge functions for the Swift framework code.
 //
 //  Created by Dan Crosby on 12/2/23.
 //
 
-#ifndef UnityBridge_h
-#define UnityBridge_h
+#ifndef GodiceFramework_Darwin_Framework_Bridge_h
+#define GodiceFramework_Darwin_Framework_Bridge_h
 
 #include <stdint.h>
 
@@ -24,4 +25,4 @@ void godice_stop_listening(void);
 }
 #endif
 
-#endif /* UnityBridge_h */
+#endif /* GodiceFramework_Darwin_Framework_Bridge_h */
