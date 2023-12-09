@@ -1,3 +1,14 @@
+# bazel
+bazel-bin
+bazel-godice-framework
+bazel-out
+bazel-testlogs
+
+# editors
+.ijwb
+.idea
+.vs
+
 # Xcode
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
