@@ -49,5 +49,7 @@ public class DicePanelController : MonoBehaviour {
         foreach (DiceRoll dr in toProcess) {
              mainText.text += $"{dr.name} rolled {dr.x} {dr.y} {dr.z}\n";
         }
+        
+        if (Input.GetButtonUp("Cancel")) { Application.Quit(); }
     }
 }
