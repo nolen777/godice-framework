@@ -1,0 +1,8 @@
+# FIXME: this should be built, not included as a bin
+
+filegroup(
+    name = "dll",
+    srcs = [
+        "BleWinrtDll.dll"
+    ]
+)
