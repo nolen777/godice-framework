@@ -1,6 +1,6 @@
 #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
 #define USE_SWIFT_INTERFACE
-#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN || ENABLE_WINMD_SUPPORT
 #define USE_WINDOWS_INTERFACE
 #else
 #endif
@@ -11,12 +11,7 @@ using UnityGoDiceInterface;
 
 public class DiceInterface : MonoBehaviour
 {
-#if USE_SWIFT_INTERFACE
-    IDiceInterfaceImports diceInterfaceImports = new AppleDiceInterfaceImports();
-#elif USE_WINDOWS_INTERFACE
-    IDiceInterfaceImports diceInterfaceImports = new WindowsDiceInterfaceImports();
-#else
-#endif
+    IDiceInterfaceImports diceInterfaceImports = new NativeDiceInterfaceImports();
 
     private static byte[] rollVector(List<byte> rawData) {
         if (rawData.Count < 1) {
