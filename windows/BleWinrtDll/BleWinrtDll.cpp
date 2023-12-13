@@ -2,6 +2,7 @@
 //
 
 #include "stdafx.h"
+#include <winrt/windows.foundation.h>
 
 #include "BleWinrtDll.h"
 
@@ -23,6 +24,8 @@ using namespace Windows::Devices::Enumeration;
 
 using namespace Windows::Storage::Streams;
 
+using concurrency::task;
+
 static BluetoothLEAdvertisementWatcher gWatcher = nullptr;
 
 const static guid kServiceGuid = guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
@@ -43,23 +46,32 @@ private:
 	static inline constexpr guid kNotifyGuid = guid("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
 	
 public:
-	static std::shared_ptr<DeviceSession> CreateSession(const std::shared_ptr<BluetoothLEDevice>& dev)
+	static task<std::shared_ptr<DeviceSession>> CreateSession(const std::shared_ptr<BluetoothLEDevice>& dev)
 	{
-		const auto services = dev->GetGattServicesAsync().get().Services();
+		const auto serviceAsync = co_await dev->GetGattServicesAsync();
+	//	auto awaited = co_await serviceAsync;
+		//const auto services = (co_await serviceAsync).Services();
+		const auto services = serviceAsync.get().Services();
 
 		for (const GattDeviceService& svc : services)
 		{
 			if (svc.Uuid() != kServiceGuid) continue;
 
-			// FIXME: make this async
-			GattCharacteristic wCh = svc.GetCharacteristicsForUuidAsync(kWriteGuid).get().Characteristics().GetAt(0);
-			GattCharacteristic nCh = svc.GetCharacteristicsForUuidAsync(kNotifyGuid).get().Characteristics().GetAt(0);
 
-			GattCommunicationStatus status = nCh.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify).get();
+			auto nChAsync = svc.GetCharacteristicsForUuidAsync(kNotifyGuid);
+			co_await nChAsync;
+			GattCharacteristic nCh = nChAsync.get().Characteristics().GetAt(0);
 
-			if (status == GattCommunicationStatus::Success)
+			auto writeConfigAsync = nCh.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify);
+			co_await writeConfigAsync;
+
+			if (writeConfigAsync.get() == GattCommunicationStatus::Success)
 			{
-				return std::make_shared<DeviceSession>(dev, wCh, nCh);
+				auto wChAsync = svc.GetCharacteristicsForUuidAsync(kWriteGuid);
+				co_await wChAsync;
+				GattCharacteristic wCh = wChAsync.get().Characteristics().GetAt(0);
+
+				co_return concurrency::create_task(std::make_shared<DeviceSession>(dev, wCh, nCh));
 			}
 			else
 			{
@@ -98,12 +110,12 @@ void godice_start_listening()
 	gWatcher.ScanningMode(BluetoothLEScanningMode::Active);
 	gWatcher.AdvertisementFilter().Advertisement().ServiceUuids().Append(kServiceGuid);
 
-	gWatcher.Received([=](auto && watcher, auto && args) {
+	gWatcher.Received([=](auto && watcher, auto && args) -> winrt::fire_and_forget {
 		cout << "Received" << std::endl;
 		const BluetoothLEAdvertisement& ad = args.Advertisement();
 
-		// FIXME: this should be async
-		auto device = std::make_shared<BluetoothLEDevice>(BluetoothLEDevice::FromBluetoothAddressAsync(args.BluetoothAddress()).get());
+		Windows::Foundation::IAsyncOperation<BluetoothLEDevice> deviceAsync = BluetoothLEDevice::FromBluetoothAddressAsync(args.BluetoothAddress());
+		auto device = std::make_shared<BluetoothLEDevice>(co_await deviceAsync);
 		std::cout << "Found device named " << to_string(device->Name()) << endl;
 	
 		gDevices[to_string(device->Name())] = DeviceSession::CreateSession(device);
