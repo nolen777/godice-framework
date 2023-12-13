@@ -29,7 +29,10 @@ namespace UnityGoDiceInterface {
 
         private static List<byte> BytesFromRawPointer(UInt32 byteCount, IntPtr bytes) {
             byte[] array = new byte[byteCount];
-            Marshal.Copy(bytes, array, 0, (int)byteCount);
+            if (byteCount > 0)
+            {
+                Marshal.Copy(bytes, array, 0, (int)byteCount);
+            }
             return new List<byte>(array);
         }
     
