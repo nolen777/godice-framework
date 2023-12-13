@@ -99,6 +99,11 @@ void godice_start_listening()
 				auto wChResult = co_await svc.GetCharacteristicsForUuidAsync(kWriteGuid);
 				GattCharacteristic wCh = wChResult.Characteristics().GetAt(0);
 
+				if (gDataReceivedCallback != nullptr)
+				{
+					gDataReceivedCallback(to_string(device->Name()).c_str(), 0, nullptr);
+				}
+
 				gDevices[to_string(device->Name())] = std::make_shared<DeviceSession>(device, wCh, nCh);
 				break;
 			}
