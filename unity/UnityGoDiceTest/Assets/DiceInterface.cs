@@ -84,8 +84,8 @@ public class DiceInterface : MonoBehaviour
     public RollCallback rollCallback = null;
     
     public void StartListening() {
-        diceInterfaceImports.StartListening();
         diceInterfaceImports.SetCallback(DelegateMessageReceived);
+        diceInterfaceImports.StartListening();
     }
     
     public void StopListening() {

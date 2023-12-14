@@ -2,19 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using AOT;
-using UnityEngine;
-
 
 namespace UnityGoDiceInterface {
     public class NativeDiceInterfaceImports : IDiceInterfaceImports {
-#if UNITY_IOS
-        private const string BundleName = "__Internal";
-#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-        private const string BundleName = "DarwinGodiceBundle";
-#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         private const string BundleName = "BleWinrtDll.dll";
-#endif
         
         private delegate void MonoDelegateMessage(string name, UInt32 byteCount, IntPtr bytePtr);
     
@@ -36,7 +27,6 @@ namespace UnityGoDiceInterface {
             return new List<byte>(array);
         }
     
-        [MonoPInvokeCallback(typeof(MonoDelegateMessage))]
         private static void MonoDelegateMessageReceived(string name, UInt32 byteCount, IntPtr bytePtr) {
             if (IDiceInterfaceImports.Delegate != null) {
                 IDiceInterfaceImports.Delegate(name, BytesFromRawPointer(byteCount, bytePtr));
