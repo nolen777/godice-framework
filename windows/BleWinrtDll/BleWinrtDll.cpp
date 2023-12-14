@@ -33,11 +33,14 @@ class DeviceSession;
 
 static GDVectorCallbackFunction gDataReceivedCallback = nullptr;
 static std::mutex gMapMutex;
-static std::map<string, shared_ptr<DeviceSession>> gDevices;
+static std::map<uint64_t, shared_ptr<DeviceSession>> gDevicesByAddress;
 
 static inline constexpr guid kServiceGuid = guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
 static inline constexpr guid kWriteGuid = guid("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
 static inline constexpr guid kNotifyGuid = guid("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
+
+
+static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher, const BluetoothLEAdvertisementReceivedEventArgs& args);
 
 static void MaybeSend(const char* txt, int32_t byteCount, uint8_t* bytes) {
 	if (gDataReceivedCallback != nullptr)
@@ -50,21 +53,36 @@ static void MaybeSend(const shared_ptr<BluetoothLEDevice>& dev, int32_t byteCoun
 	MaybeSend(to_string(dev->Name()).c_str(), byteCount, bytes);
 }
 
-class DeviceSession
+struct DeviceSession
 {
 private:
 	shared_ptr<BluetoothLEDevice> device_;
-	GattCharacteristic write_characteristic_;
-	GattCharacteristic notify_characteristic_;
+	GattCharacteristic write_characteristic_ = nullptr;
+	GattCharacteristic notify_characteristic_ = nullptr;
 	
 public:
-	DeviceSession(const shared_ptr<BluetoothLEDevice>& dev, const GattCharacteristic& wCh, const GattCharacteristic nCh) : device_(dev), write_characteristic_(wCh), notify_characteristic_(nCh)
+	DeviceSession(const shared_ptr<BluetoothLEDevice>& dev) : device_(dev)
 	{
+	}
+
+	void SetNotifyCharacteristic(const GattCharacteristic& nCh) {
+		notify_characteristic_ = nCh;
+
 		notify_characteristic_.ValueChanged([=](auto&& ch, auto&& args)
-		{
-			const IBuffer& data = args.CharacteristicValue();
-			MaybeSend(dev, data.Length(), data.data());
-		});
+			{
+				const IBuffer& data = args.CharacteristicValue();
+				MaybeSend(device_, data.Length(), data.data());
+			});
+	}
+
+	void SetWriteCharacteristic(const GattCharacteristic& wCh) {
+		write_characteristic_ = wCh;
+	}
+
+	~DeviceSession() {
+		if (notify_characteristic_) {
+			notify_characteristic_.ValueChanged([](auto&& ch, auto&& args) {});
+		}
 	}
 };
 
@@ -76,7 +94,7 @@ void godice_set_callback(GDVectorCallbackFunction callback)
 
 void godice_start_listening()
 {
-	MaybeSend("Start listening WXYZ", 0, nullptr);
+	MaybeSend("Start listening AWXYZ", 0, nullptr);
 	if (gWatcher == nullptr)
 	{
 		gWatcher = BluetoothLEAdvertisementWatcher();
@@ -84,46 +102,7 @@ void godice_start_listening()
 	gWatcher.ScanningMode(BluetoothLEScanningMode::Active);
 	gWatcher.AdvertisementFilter().Advertisement().ServiceUuids().Append(kServiceGuid);
 
-	gWatcher.Received([=](auto && watcher, auto && args) -> winrt::fire_and_forget {
-		MaybeSend("Received", 0, nullptr);
-		const BluetoothLEAdvertisement& ad = args.Advertisement();
-
-		Windows::Foundation::IAsyncOperation<BluetoothLEDevice> deviceAsync = BluetoothLEDevice::FromBluetoothAddressAsync(args.BluetoothAddress());
-		auto device = std::make_shared<BluetoothLEDevice>(co_await deviceAsync);
-	
-		// Try co_awaiting to get the services and characteristics
-		const auto services = (co_await device->GetGattServicesForUuidAsync(kServiceGuid)).Services();
-
-		for (const GattDeviceService& svc : services)
-		{
-			MaybeSend("Got services", 0, nullptr);
-			if (svc.Uuid() != kServiceGuid) continue;
-
-			auto nChResult = co_await svc.GetCharacteristicsForUuidAsync(kNotifyGuid);
-
-			MaybeSend("Got notify characteristic", 0, nullptr);
-			GattCharacteristic nCh = nChResult.Characteristics().GetAt(0);
-
-			auto writeConfigStatus = co_await nCh.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify);
-
-			if (writeConfigStatus == GattCommunicationStatus::Success)
-			{
-				auto wChResult = co_await svc.GetCharacteristicsForUuidAsync(kWriteGuid);
-				MaybeSend("Got write characteristic", 0, nullptr);
-				GattCharacteristic wCh = wChResult.Characteristics().GetAt(0);
-
-				MaybeSend(device, 0, nullptr);
-
-				std::lock_guard<std::mutex> lock(gMapMutex);
-				gDevices[to_string(device->Name())] = std::make_shared<DeviceSession>(device, wCh, nCh);
-				break;
-			}
-			else
-			{
-				throw exception("oops");
-			}
-		}
-	});
+	gWatcher.Received(ReceivedEvent);
 	
 	gWatcher.Stopped([=](auto &&, auto &&)
 	{
@@ -134,13 +113,78 @@ void godice_start_listening()
 	gWatcher.Start();
 }
 
-static void ReceivedEvent(BluetoothLEAdvertisementWatcher &&watcher, BluetoothLEAdvertisementReceivedEventArgs &&args) {
+static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watcher, const BluetoothLEAdvertisementReceivedEventArgs &args) {
+	MaybeSend("Received", 0, nullptr);
+	const BluetoothLEAdvertisement& ad = args.Advertisement();
 
+	shared_ptr<BluetoothLEDevice> device = nullptr;
+	shared_ptr<DeviceSession> session = nullptr;
+	string deviceName = "";
+
+	uint64_t btAddr = args.BluetoothAddress();
+	{
+		std::scoped_lock<std::mutex> lock(gMapMutex);
+		if (gDevicesByAddress.count(btAddr) > 0) {
+			MaybeSend("Already have this address, skipping", 0, nullptr);
+			co_return;
+		}
+	}
+	
+	Windows::Foundation::IAsyncOperation<BluetoothLEDevice> deviceAsync = BluetoothLEDevice::FromBluetoothAddressAsync(args.BluetoothAddress());
+	device = std::make_shared<BluetoothLEDevice>(co_await deviceAsync);
+
+	{
+		std::scoped_lock<std::mutex> lock(gMapMutex);
+		if (gDevicesByAddress.count(btAddr) > 0) {
+			MaybeSend("Already have this address 2, skipping", 0, nullptr);
+			co_return;
+		}
+
+		session = std::make_shared<DeviceSession>(device);
+		gDevicesByAddress[btAddr] = session;
+		deviceName = to_string(device->Name());
+	}
+
+	MaybeSend(device, 0, nullptr);
+
+	// Try co_awaiting to get the services and characteristics
+	const auto services = (co_await device->GetGattServicesForUuidAsync(kServiceGuid)).Services();
+
+	for (const GattDeviceService& svc : services)
+	{
+		MaybeSend("Got services", 0, nullptr);
+		if (svc.Uuid() != kServiceGuid) continue;
+
+		auto nChResult = co_await svc.GetCharacteristicsForUuidAsync(kNotifyGuid);
+
+		MaybeSend("Got notify characteristic", 0, nullptr);
+		GattCharacteristic nCh = nChResult.Characteristics().GetAt(0);
+
+		session->SetNotifyCharacteristic(nCh);
+
+		auto writeConfigStatus = co_await nCh.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify);
+
+		if (writeConfigStatus == GattCommunicationStatus::Success)
+		{
+			auto wChResult = co_await svc.GetCharacteristicsForUuidAsync(kWriteGuid);
+			MaybeSend("Got write characteristic", 0, nullptr);
+			GattCharacteristic wCh = wChResult.Characteristics().GetAt(0);
+
+			session->SetWriteCharacteristic(wCh);
+
+			MaybeSend(device, 0, nullptr);
+
+		}
+		else
+		{
+			throw exception("oops");
+		}
+	}
 }
 
 void godice_stop_listening()
 {
-	const std::lock_guard<std::mutex> lock(gMapMutex);
+	const std::scoped_lock<std::mutex> lock(gMapMutex);
 	gWatcher.Stop();
-	gDevices.clear();
+	gDevicesByAddress.clear();
 }
