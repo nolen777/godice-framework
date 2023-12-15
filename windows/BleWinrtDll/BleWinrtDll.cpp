@@ -94,7 +94,7 @@ void godice_set_callback(GDVectorCallbackFunction callback)
 
 void godice_start_listening()
 {
-	MaybeSend("Start listening AWXYZ", 0, nullptr);
+	//MaybeSend("Start listening AWXYZ", 0, nullptr);
 	if (gWatcher == nullptr)
 	{
 		gWatcher = BluetoothLEAdvertisementWatcher();
@@ -114,7 +114,7 @@ void godice_start_listening()
 }
 
 static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watcher, const BluetoothLEAdvertisementReceivedEventArgs &args) {
-	MaybeSend("Received", 0, nullptr);
+//	MaybeSend("Received", 0, nullptr);
 	const BluetoothLEAdvertisement& ad = args.Advertisement();
 
 	shared_ptr<BluetoothLEDevice> device = nullptr;
@@ -125,7 +125,7 @@ static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watc
 	{
 		std::scoped_lock<std::mutex> lock(gMapMutex);
 		if (gDevicesByAddress.count(btAddr) > 0) {
-			MaybeSend("Already have this address, skipping", 0, nullptr);
+//			MaybeSend("Already have this address, skipping", 0, nullptr);
 			co_return;
 		}
 	}
@@ -136,7 +136,7 @@ static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watc
 	{
 		std::scoped_lock<std::mutex> lock(gMapMutex);
 		if (gDevicesByAddress.count(btAddr) > 0) {
-			MaybeSend("Already have this address 2, skipping", 0, nullptr);
+//			MaybeSend("Already have this address 2, skipping", 0, nullptr);
 			co_return;
 		}
 
@@ -152,12 +152,12 @@ static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watc
 
 	for (const GattDeviceService& svc : services)
 	{
-		MaybeSend("Got services", 0, nullptr);
+	//	MaybeSend("Got services", 0, nullptr);
 		if (svc.Uuid() != kServiceGuid) continue;
 
 		auto nChResult = co_await svc.GetCharacteristicsForUuidAsync(kNotifyGuid);
 
-		MaybeSend("Got notify characteristic", 0, nullptr);
+	//	MaybeSend("Got notify characteristic", 0, nullptr);
 		GattCharacteristic nCh = nChResult.Characteristics().GetAt(0);
 
 		session->SetNotifyCharacteristic(nCh);
@@ -167,7 +167,7 @@ static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watc
 		if (writeConfigStatus == GattCommunicationStatus::Success)
 		{
 			auto wChResult = co_await svc.GetCharacteristicsForUuidAsync(kWriteGuid);
-			MaybeSend("Got write characteristic", 0, nullptr);
+	//		MaybeSend("Got write characteristic", 0, nullptr);
 			GattCharacteristic wCh = wChResult.Characteristics().GetAt(0);
 
 			session->SetWriteCharacteristic(wCh);
