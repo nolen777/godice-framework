@@ -14,15 +14,27 @@ internal func GetController() -> GoDiceBLEController {
     return btc;
 }
 
+@_cdecl("set_device_found_callback")
+func SetDataCallback(cb: @escaping (UnsafePointer<CChar>, UnsafePointer<CChar>) -> Void) -> Void {
+    btc.setDeviceFoundCallback(cb: { (identifier: String, name: String) in
+        cb(identifier.cString(using: .utf8)!, name.cString(using: .utf8)!)
+    })
+}
+
 @_cdecl("set_data_callback")
 func SetDataCallback(cb: @escaping (UnsafePointer<CChar>, UInt32, UnsafePointer<UInt8>?) -> Void) -> Void {
-    btc.setDataCallback(cb: { (name: String, data: Data?) in
+    btc.setDataCallback(cb: { (identifier: String, data: Data?) in
         if let data = data {
-            cb(name.cString(using: .utf8)!, UInt32(data.count), [UInt8](data))
+            cb(identifier.cString(using: .utf8)!, UInt32(data.count), [UInt8](data))
         } else {
-            cb(name.cString(using: .utf8)!, 0, nil)
+            cb(identifier.cString(using: .utf8)!, 0, nil)
         }
     })
+}
+
+@_cdecl("connect_device")
+func ConnectDevice(identifier: UnsafePointer<CChar>) -> Void {
+    btc.connectDevice(identifier: String(cString: identifier))
 }
 
 @_cdecl("start_listening")

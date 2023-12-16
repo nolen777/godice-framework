@@ -34,7 +34,7 @@ class DeviceSession;
 static GDDeviceFoundCallbackFunction gDeviceFoundCallback = nullptr;
 static GDDataCallbackFunction gDataReceivedCallback = nullptr;
 static std::mutex gMapMutex;
-static std::map<uint64_t, shared_ptr<DeviceSession>> gDevicesByAddress;
+static std::map<string, shared_ptr<DeviceSession>> gDevicesByIdentifier;
 
 static inline constexpr guid kServiceGuid = guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
 static inline constexpr guid kWriteGuid = guid("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
@@ -58,11 +58,12 @@ struct DeviceSession
 {
 private:
 	const shared_ptr<BluetoothLEDevice> device_;
+	const string identifier;
 	GattCharacteristic write_characteristic_ = nullptr;
 	GattCharacteristic notify_characteristic_ = nullptr;
 	
 public:
-	DeviceSession(const shared_ptr<BluetoothLEDevice>& dev) : device_(dev)
+	DeviceSession(const shared_ptr<BluetoothLEDevice>& dev, const string& ident) : device_(dev), identifier(ident)
 	{
 	}
 
@@ -118,13 +119,13 @@ void godice_start_listening()
 	gWatcher.Start();
 }
 
-static fire_and_forget internalConnect(uint64_t addr);
-__declspec(dllexport) void godice_connect(uint64_t addr) {
-	internalConnect(addr);
+static fire_and_forget internalConnect(const string& identifier);
+__declspec(dllexport) void godice_connect(const char* identifier) {
+	internalConnect(string(identifier));
 }
 
-static fire_and_forget internalConnect(uint64_t addr) {
-	auto session = gDevicesByAddress[addr];
+static fire_and_forget internalConnect(const string& identifier) {
+	auto session = gDevicesByIdentifier[identifier];
 	auto& device = session->GetDevice();
 
 	// Try co_awaiting to get the services and characteristics
@@ -171,26 +172,27 @@ static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watc
 	string deviceName = "";
 
 	uint64_t btAddr = args.BluetoothAddress();
+	string identifier = to_string(btAddr);
 	{
 		std::scoped_lock<std::mutex> lock(gMapMutex);
-		if (gDevicesByAddress.count(btAddr) > 0) {
+		if (gDevicesByIdentifier.count(identifier) > 0) {
 //			MaybeSend("Already have this address, skipping", 0, nullptr);
 			co_return;
 		}
 	}
 	
-	Windows::Foundation::IAsyncOperation<BluetoothLEDevice> deviceAsync = BluetoothLEDevice::FromBluetoothAddressAsync(args.BluetoothAddress());
+	Windows::Foundation::IAsyncOperation<BluetoothLEDevice> deviceAsync = BluetoothLEDevice::FromBluetoothAddressAsync(btAddr);
 	device = std::make_shared<BluetoothLEDevice>(co_await deviceAsync);
 
 	{
 		std::scoped_lock<std::mutex> lock(gMapMutex);
-		if (gDevicesByAddress.count(btAddr) > 0) {
+		if (gDevicesByIdentifier.count(identifier) > 0) {
 //			MaybeSend("Already have this address 2, skipping", 0, nullptr);
 			co_return;
 		}
 
 		session = std::make_shared<DeviceSession>(device);
-		gDevicesByAddress[btAddr] = session;
+		gDevicesByIdentifier[identifier] = session;
 		deviceName = to_string(device->Name());
 
 		if (gDeviceFoundCallback) {
@@ -203,5 +205,5 @@ void godice_stop_listening()
 {
 	const std::scoped_lock<std::mutex> lock(gMapMutex);
 	gWatcher.Stop();
-	gDevicesByAddress.clear();
+	gDevicesByIdentifier.clear();
 }

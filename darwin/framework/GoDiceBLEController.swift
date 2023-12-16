@@ -18,12 +18,22 @@ public class GoDiceBLEController: NSObject {
     
     private var sessions: [String : DiceSession] = [:]
     
+    public typealias DeviceFoundCallback = (String, String) -> Void
     public typealias DataCallback = (String, Data?) -> Void
     
+    private var deviceFoundCallback: DeviceFoundCallback = {_, _ in }
     private var dataCallback: DataCallback = {_,_ in }
     
+    public func setDeviceFoundCallback(cb: @escaping DeviceFoundCallback) -> Void {
+        deviceFoundCallback = cb
+    }
     public func setDataCallback(cb: @escaping DataCallback) -> Void {
         dataCallback = cb
+    }
+    public func connectDevice(identifier: String) -> Void {
+        if let session = sessions[identifier] {
+            centralManager.connect(session.peripheral)
+        }
     }
     
     public var listening: Bool = false {
@@ -157,8 +167,9 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             return
         }
         
-        sessions[name] = DiceSession(peripheral: peripheral, updateCallback: sessionUpdated)
-        centralManager.connect(peripheral)
+        sessions[peripheral.identifier.uuidString] = DiceSession(peripheral: peripheral, updateCallback: sessionUpdated)
+        
+        deviceFoundCallback(peripheral.identifier.uuidString, peripheral.name ?? "")
     }
     
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -166,7 +177,7 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             print("Peripheral has no name")
             return
         }
-        guard let session = sessions[name] else {
+        guard let session = sessions[peripheral.identifier.uuidString] else {
             print("No session for \(name)")
             return
         }
@@ -180,6 +191,6 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             return
         }
         
-        dataCallback(name, results)
+        dataCallback(peripheral.identifier.uuidString, results)
     }
 }

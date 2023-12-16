@@ -15,11 +15,14 @@
 extern “C” {
 #endif
 
-typedef void (*GDVectorCallbackFunction)(const char* name, uint32_t data_size, uint8_t* data);
+typedef void (*GDDeviceFoundCallbackFunction)(const char* identifier, const char* name);
+typedef void (*GDDataCallbackFunction)(const char* identifier, uint32_t data_size, uint8_t* data);
 
-void godice_set_callback(GDVectorCallbackFunction callback);
+void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
+                          GDDataCallbackFunction dataReceivedCallback);
 void godice_start_listening(void);
 void godice_stop_listening(void);
+void godice_connect(const char* identifier);
     
 #ifdef __cplusplus
 }
