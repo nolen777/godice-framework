@@ -19,3 +19,5 @@ diceInterfaceImports.SetCallbacks(
 diceInterfaceImports.StartListening();
 
 Thread.Sleep(30000);
+
+Console.Out.WriteLine("All done here\n");
