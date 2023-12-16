@@ -12,7 +12,7 @@ extern void set_device_found_callback(void (^)(const char* identifier, const cha
 extern void set_data_callback(void (^)(const char* identifier, uint32_t data_size, uint8_t* data));
 extern void start_listening(void);
 extern void stop_listening(void);
-extern void connect_device(uint64_t);
+extern void connect_device(const char* identifier);
 
 void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
                           GDDataCallbackFunction dataReceivedCallback) {
@@ -32,6 +32,6 @@ void godice_stop_listening(void) {
     stop_listening();
 }
 
-void godice_connect(uint64_t addr) {
-    
+void godice_connect(const char* identifier) {
+    connect_device(identifier);
 }
