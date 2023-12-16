@@ -162,11 +162,6 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        guard let name = peripheral.name else {
-            print("Peripheral has no name")
-            return
-        }
-        
         sessions[peripheral.identifier.uuidString] = DiceSession(peripheral: peripheral, updateCallback: sessionUpdated)
         
         deviceFoundCallback(peripheral.identifier.uuidString, peripheral.name ?? "")
@@ -186,11 +181,6 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     func sessionUpdated(peripheral: CBPeripheral, results: Data?) {
-        guard let name = peripheral.name else {
-            print("Peripheral has no name!")
-            return
-        }
-        
         dataCallback(peripheral.identifier.uuidString, results)
     }
 }
