@@ -7,8 +7,8 @@ namespace UnityGoDiceInterface {
     public class NativeDiceInterfaceImports : IDiceInterfaceImports {
         private const string BundleName = "BleWinrtDll.dll";
         
-        private delegate void MonoDelegateDataMessage(UInt64 addr, UInt32 byteCount, IntPtr bytePtr);
-        private delegate void MonoDelegateFoundMessage(UInt64 addr, string name);
+        private delegate void MonoDelegateDataMessage(string identifier, UInt32 byteCount, IntPtr bytePtr);
+        private delegate void MonoDelegateFoundMessage(string identifier, string name);
 
         [DllImport (dllName: BundleName, EntryPoint = "godice_start_listening")]
         private static extern void _NativeBridgeStartListening();
@@ -20,7 +20,7 @@ namespace UnityGoDiceInterface {
         private static extern void _NativeBridgeSetCallbacks(MonoDelegateFoundMessage deviceFound, MonoDelegateDataMessage dataReceived);
 
         [DllImport(dllName: BundleName, EntryPoint = "godice_connect")]
-        private static extern void _NativeBridgeConnect(UInt64 addr);
+        private static extern void _NativeBridgeConnect(string identifier);
 
         private static List<byte> BytesFromRawPointer(UInt32 byteCount, IntPtr bytes) {
             byte[] array = new byte[byteCount];
@@ -30,17 +30,17 @@ namespace UnityGoDiceInterface {
             }
             return new List<byte>(array);
         }
-        private static void MonoDelegateDeviceFound(UInt64 addr, string name)
+        private static void MonoDelegateDeviceFound(string identifier, string name)
         {
             if (IDiceInterfaceImports.DeviceFound != null)
             {
-                IDiceInterfaceImports.DeviceFound(addr, name);
+                IDiceInterfaceImports.DeviceFound(identifier, name);
             }
         }
 
-        private static void MonoDelegateMessageReceived(UInt64 addr, UInt32 byteCount, IntPtr bytePtr) {
+        private static void MonoDelegateMessageReceived(string identifier, UInt32 byteCount, IntPtr bytePtr) {
             if (IDiceInterfaceImports.DataReceived != null) {
-                IDiceInterfaceImports.DataReceived(addr, BytesFromRawPointer(byteCount, bytePtr));
+                IDiceInterfaceImports.DataReceived(identifier, BytesFromRawPointer(byteCount, bytePtr));
             }
         }
         
@@ -53,9 +53,9 @@ namespace UnityGoDiceInterface {
             _NativeBridgeStopListening();
         }
 
-        public void Connect(UInt64 addr)
+        public void Connect(string identifier)
         {
-            _NativeBridgeConnect(addr);
+            _NativeBridgeConnect(identifier);
         }
     }
 }

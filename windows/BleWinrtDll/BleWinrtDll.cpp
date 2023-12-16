@@ -42,17 +42,7 @@ static inline constexpr guid kNotifyGuid = guid("6e400003-b5a3-f393-e0a9-e50e24d
 
 
 static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher, const BluetoothLEAdvertisementReceivedEventArgs& args);
-
-static void MaybeSend(uint64_t addr, int32_t byteCount, uint8_t* bytes) {
-	if (gDataReceivedCallback != nullptr)
-	{
-		gDataReceivedCallback(addr, byteCount, bytes);
-	}
-}
-
-static void MaybeSend(const shared_ptr<BluetoothLEDevice>& dev, int32_t byteCount, uint8_t* bytes) {
-	MaybeSend(dev->BluetoothAddress(), byteCount, bytes);
-}
+static fire_and_forget internalConnect(const string& identifier);
 
 struct DeviceSession
 {
@@ -72,8 +62,11 @@ public:
 
 		notify_characteristic_.ValueChanged([=](auto&& ch, auto&& args)
 			{
-				const IBuffer& data = args.CharacteristicValue();
-				MaybeSend(device_, data.Length(), data.data());
+				if (gDataReceivedCallback != nullptr)
+				{
+					const IBuffer& data = args.CharacteristicValue();
+					gDataReceivedCallback(identifier.c_str(), data.Length(), data.data());
+				}
 			});
 	}
 
@@ -100,7 +93,6 @@ void godice_set_callbacks(
 
 void godice_start_listening()
 {
-	//MaybeSend("Start listening AWXYZ", 0, nullptr);
 	if (gWatcher == nullptr)
 	{
 		gWatcher = BluetoothLEAdvertisementWatcher();
@@ -119,7 +111,6 @@ void godice_start_listening()
 	gWatcher.Start();
 }
 
-static fire_and_forget internalConnect(const string& identifier);
 __declspec(dllexport) void godice_connect(const char* identifier) {
 	internalConnect(string(identifier));
 }
@@ -133,12 +124,10 @@ static fire_and_forget internalConnect(const string& identifier) {
 
 	for (const GattDeviceService& svc : services)
 	{
-		//	MaybeSend("Got services", 0, nullptr);
 		if (svc.Uuid() != kServiceGuid) continue;
 
 		auto nChResult = co_await svc.GetCharacteristicsForUuidAsync(kNotifyGuid);
 
-		//	MaybeSend("Got notify characteristic", 0, nullptr);
 		GattCharacteristic nCh = nChResult.Characteristics().GetAt(0);
 
 		session->SetNotifyCharacteristic(nCh);
@@ -148,12 +137,10 @@ static fire_and_forget internalConnect(const string& identifier) {
 		if (writeConfigStatus == GattCommunicationStatus::Success)
 		{
 			auto wChResult = co_await svc.GetCharacteristicsForUuidAsync(kWriteGuid);
-			//		MaybeSend("Got write characteristic", 0, nullptr);
 			GattCharacteristic wCh = wChResult.Characteristics().GetAt(0);
 
 			session->SetWriteCharacteristic(wCh);
 
-			MaybeSend(device, 0, nullptr);
 			co_return;
 		}
 		else
@@ -164,19 +151,16 @@ static fire_and_forget internalConnect(const string& identifier) {
 }
 
 static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watcher, const BluetoothLEAdvertisementReceivedEventArgs &args) {
-//	MaybeSend("Received", 0, nullptr);
 	const BluetoothLEAdvertisement& ad = args.Advertisement();
 
 	shared_ptr<BluetoothLEDevice> device = nullptr;
 	shared_ptr<DeviceSession> session = nullptr;
-	string deviceName = "";
 
 	uint64_t btAddr = args.BluetoothAddress();
 	string identifier = to_string(btAddr);
 	{
 		std::scoped_lock<std::mutex> lock(gMapMutex);
 		if (gDevicesByIdentifier.count(identifier) > 0) {
-//			MaybeSend("Already have this address, skipping", 0, nullptr);
 			co_return;
 		}
 	}
@@ -187,16 +171,14 @@ static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher &watc
 	{
 		std::scoped_lock<std::mutex> lock(gMapMutex);
 		if (gDevicesByIdentifier.count(identifier) > 0) {
-//			MaybeSend("Already have this address 2, skipping", 0, nullptr);
 			co_return;
 		}
 
-		session = std::make_shared<DeviceSession>(device);
+		session = std::make_shared<DeviceSession>(device, identifier);
 		gDevicesByIdentifier[identifier] = session;
-		deviceName = to_string(device->Name());
 
 		if (gDeviceFoundCallback) {
-			gDeviceFoundCallback(btAddr, deviceName.c_str());
+			gDeviceFoundCallback(identifier.c_str(), to_string(device->Name()).c_str());
 		}
 	}
 }

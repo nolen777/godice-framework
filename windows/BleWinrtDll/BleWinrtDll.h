@@ -12,5 +12,5 @@ extern "C" {
 	__declspec(dllexport) void godice_start_listening();
 	__declspec(dllexport) void godice_stop_listening();
 
-	__declspec(dllexport) void godice_connect(const char* addr);
+	__declspec(dllexport) void godice_connect(const char* identifier);
 }

@@ -2,11 +2,11 @@ using System.Collections.Generic;
 
 namespace UnityGoDiceInterface {
     public interface IDiceInterfaceImports {
-        delegate void DeviceFoundDelegate(UInt64 addr, string name);
-        delegate void DataReceivedDelegate(UInt64 addr, List<byte> bytes);
+        delegate void DeviceFoundDelegate(string identifier, string name);
+        delegate void DataReceivedDelegate(string identifier, List<byte> bytes);
         
-        protected static DeviceFoundDelegate DeviceFound = (addr, name) => { Console.Out.WriteLine($"Found device {addr} {name}"); };
-        protected static DataReceivedDelegate DataReceived = (addr, bytes) => { Console.Out.WriteLine($"Received bytes for {addr}"); };
+        protected static DeviceFoundDelegate DeviceFound = (identifier, name) => { Console.Out.WriteLine($"Found device {identifier} {name}"); };
+        protected static DataReceivedDelegate DataReceived = (identifier, bytes) => { Console.Out.WriteLine($"Received bytes for {identifier}"); };
         
         public void StartListening();
   
@@ -17,6 +17,6 @@ namespace UnityGoDiceInterface {
             DataReceived = dataReceived;
         }
 
-        public void Connect(UInt64 addr);
+        public void Connect(string identifier);
     }
 }
