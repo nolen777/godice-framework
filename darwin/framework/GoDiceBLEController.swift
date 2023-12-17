@@ -19,20 +19,46 @@ public class GoDiceBLEController: NSObject {
     private var sessions: [String : DiceSession] = [:]
     
     public typealias DeviceFoundCallback = (String, String) -> Void
-    public typealias DataCallback = (String, Data?) -> Void
+    public typealias DataCallback = (String, Data) -> Void
+    public typealias DeviceConnectedCallback = (String) -> Void
+    public typealias DeviceDisconnectedCallback = (String) -> Void
+    public typealias ListenerStoppedCallback = () -> Void
     
     private var deviceFoundCallback: DeviceFoundCallback = {_, _ in }
     private var dataCallback: DataCallback = {_,_ in }
+    private var deviceConnectedCallback: DeviceConnectedCallback = {_ in }
+    private var deviceDisconnectedCallback: DeviceDisconnectedCallback = {_ in }
+    private var listenerStoppedCallback: ListenerStoppedCallback = {}
     
     public func setDeviceFoundCallback(cb: @escaping DeviceFoundCallback) -> Void {
         deviceFoundCallback = cb
     }
-    public func setDataCallback(cb: @escaping DataCallback) -> Void {
-        dataCallback = cb
+    public func setDataCallback(cb: @escaping DataCallback) -> Void { dataCallback = cb }
+    public func setDeviceConnectedCallback(cb: @escaping DeviceConnectedCallback) -> Void {
+        deviceConnectedCallback = cb
     }
+    public func setDeviceDisconnectedCallback(cb: @escaping DeviceDisconnectedCallback) -> Void {
+        deviceDisconnectedCallback = cb
+    }
+    public func setListenerStoppedCallback(cb: @escaping ListenerStoppedCallback) -> Void {
+        listenerStoppedCallback = cb
+    }
+    
     public func connectDevice(identifier: String) -> Void {
         if let session = sessions[identifier] {
             centralManager.connect(session.peripheral)
+        }
+    }
+    
+    public func disconnectDevice(identifier: String) -> Void {
+        if let session = sessions[identifier] {
+            centralManager.cancelPeripheralConnection(session.peripheral)
+        }
+    }
+    
+    public func sendData(identifier: String, data: Data) -> Void {
+        if let session = sessions[identifier] {
+            session.peripheral.writeValue(data, for: session.writeCharacteristic, type: .withResponse)
         }
     }
     
@@ -48,7 +74,7 @@ public class GoDiceBLEController: NSObject {
             }
         }
     }
-
+    
     public override init() {
         centralManager = CBCentralManager(delegate: nil, queue: queue)
         super.init()
@@ -76,6 +102,8 @@ public class GoDiceBLEController: NSObject {
                 centralManager.cancelPeripheralConnection(session.peripheral)
             }
             sessions = [:]
+            
+            listenerStoppedCallback()
         }
     }
     private class DiceSession: NSObject, CBPeripheralDelegate {
@@ -180,7 +208,18 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
         session.run()
     }
     
+    public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        print("Received error \(error?.localizedDescription ?? "unknown")")
+        
+        sessions.removeValue(forKey: peripheral.identifier.uuidString)
+        deviceDisconnectedCallback(peripheral.identifier.uuidString)
+    }
+    
     func sessionUpdated(peripheral: CBPeripheral, results: Data?) {
-        dataCallback(peripheral.identifier.uuidString, results)
+        if let data = results {
+            dataCallback(peripheral.identifier.uuidString, data)
+        } else {
+            deviceConnectedCallback(peripheral.identifier.uuidString)
+        }
     }
 }
