@@ -79,6 +79,10 @@ public:
 
 	const shared_ptr<BluetoothLEDevice> GetDevice() { return device_; }
 
+	auto GetWriteCharacteristic() const -> const GattCharacteristic& {
+		return write_characteristic_;
+	}
+
 	~DeviceSession() {
 		if (notify_characteristic_) {
 			notify_characteristic_.ValueChanged([](auto&& ch, auto&& args) {});
@@ -126,24 +130,26 @@ void godice_connect(const char* identifier) {
 
 void godice_disconnect(const char* identifier) {
 	auto session = gDevicesByIdentifier[identifier];
-	session->GetDevice().Close();
 	gDevicesByIdentifier.erase(identifier);
 }
 
 void godice_send(const char *identifier, uint32_t data_size, uint8_t *data){
 	auto session = gDevicesByIdentifier[identifier];
-	const IBuffer& buffer = DataWriter::FromBuffer(winrt::array_view<uint8_t>(data, data + data_size)).DetachBuffer();
-	session->GetWriteCharacteristic().WriteValueAsync(buffer);
-	buffer.Close();
+	
+	auto buf = Buffer(data_size);
+
+	memcpy(buf.data(), data, data_size);
+
+	session->GetWriteCharacteristic().WriteValueAsync(buf);
 }
 
 static fire_and_forget internalConnect(const string& identifier) {
 	auto session = gDevicesByIdentifier[identifier];
 	auto& device = session->GetDevice();
 	
-	device.ConnectionStatusChanged([=](auto&& dev, auto&& args)
+	device->ConnectionStatusChanged([=](const BluetoothLEDevice& dev, auto&& args)
 		{
-			if (args.CurrentState() == BluetoothConnectionStatus::Disconnected)
+			if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
 			{
 				if (gDeviceDisconnectedCallback) {
 					gDeviceDisconnectedCallback(identifier.c_str());
