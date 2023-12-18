@@ -12,9 +12,9 @@ extern "C" {
 	__declspec(dllexport) void godice_set_callbacks(
 		GDDeviceFoundCallbackFunction deviceFoundCallback,
 		GDDataCallbackFunction dataReceivedCallback,
-		  GDDeviceConnectedCallbackFunction deviceConnectedCallback,
-		  GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
-		  GDListenerStoppedCallbackFunction listenerStoppedCallback);
+		GDDeviceConnectedCallbackFunction deviceConnectedCallback,
+		GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
+		GDListenerStoppedCallbackFunction listenerStoppedCallback);
 	__declspec(dllexport) void godice_start_listening();
 	__declspec(dllexport) void godice_stop_listening();
 

@@ -33,13 +33,16 @@ class DeviceSession;
 
 static GDDeviceFoundCallbackFunction gDeviceFoundCallback = nullptr;
 static GDDataCallbackFunction gDataReceivedCallback = nullptr;
+static GDDeviceConnectedCallbackFunction gDeviceConnectedCallback = nullptr;
+static GDDeviceDisconnectedCallbackFunction gDeviceDisconnectedCallback = nullptr;
+static GDListenerStoppedCallbackFunction gListenerStoppedCallback = nullptr;
+
 static std::mutex gMapMutex;
 static std::map<string, shared_ptr<DeviceSession>> gDevicesByIdentifier;
 
 static inline constexpr guid kServiceGuid = guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
 static inline constexpr guid kWriteGuid = guid("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
 static inline constexpr guid kNotifyGuid = guid("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
-
 
 static fire_and_forget ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher, const BluetoothLEAdvertisementReceivedEventArgs& args);
 static fire_and_forget internalConnect(const string& identifier);
@@ -84,11 +87,17 @@ public:
 };
 
 void godice_set_callbacks(
-	GDDeviceFoundCallbackFunction deviceFoundCallback,
-	GDDataCallbackFunction dataReceivedCallback)
+		GDDeviceFoundCallbackFunction deviceFoundCallback,
+		GDDataCallbackFunction dataReceivedCallback,
+		GDDeviceConnectedCallbackFunction deviceConnectedCallback,
+		GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
+		GDListenerStoppedCallbackFunction listenerStoppedCallback)
 {
 	gDeviceFoundCallback = deviceFoundCallback;
 	gDataReceivedCallback = dataReceivedCallback;
+	gDeviceConnectedCallback = deviceConnectedCallback;
+	gDeviceDisconnectedCallback = deviceDisconnectedCallback;
+	gListenerStoppedCallback = listenerStoppedCallback;
 }
 
 void godice_start_listening()
@@ -111,14 +120,37 @@ void godice_start_listening()
 	gWatcher.Start();
 }
 
-__declspec(dllexport) void godice_connect(const char* identifier) {
+void godice_connect(const char* identifier) {
 	internalConnect(string(identifier));
+}
+
+void godice_disconnect(const char* identifier) {
+	auto session = gDevicesByIdentifier[identifier];
+	session->GetDevice().Close();
+	gDevicesByIdentifier.erase(identifier);
+}
+
+void godice_send(const char *identifier, uint32_t data_size, uint8_t *data){
+	auto session = gDevicesByIdentifier[identifier];
+	const IBuffer& buffer = DataWriter::FromBuffer(winrt::array_view<uint8_t>(data, data + data_size)).DetachBuffer();
+	session->GetWriteCharacteristic().WriteValueAsync(buffer);
+	buffer.Close();
 }
 
 static fire_and_forget internalConnect(const string& identifier) {
 	auto session = gDevicesByIdentifier[identifier];
 	auto& device = session->GetDevice();
-
+	
+	device.ConnectionStatusChanged([=](auto&& dev, auto&& args)
+		{
+			if (args.CurrentState() == BluetoothConnectionStatus::Disconnected)
+			{
+				if (gDeviceDisconnectedCallback) {
+					gDeviceDisconnectedCallback(identifier.c_str());
+				}
+			}
+		});
+	
 	// Try co_awaiting to get the services and characteristics
 	const auto services = (co_await device->GetGattServicesForUuidAsync(kServiceGuid)).Services();
 
@@ -141,6 +173,10 @@ static fire_and_forget internalConnect(const string& identifier) {
 
 			session->SetWriteCharacteristic(wCh);
 
+			if (gDeviceConnectedCallback) {
+				gDeviceConnectedCallback(identifier.c_str());
+			}
+			
 			co_return;
 		}
 		else
