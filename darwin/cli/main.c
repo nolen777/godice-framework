@@ -14,12 +14,15 @@ void deviceConnectedCallback(const char* identifier);
 void deviceDisconnectedCallback(const char* identifier);
 void listenerStoppedCallback(void);
 
+void logger(const char* string);
+
 int main(int argc, const char * argv[]) {
     godice_set_callbacks(deviceFoundCallback,
                          dataReceivedCallback,
                          deviceConnectedCallback, 
                          deviceDisconnectedCallback,
                          listenerStoppedCallback);
+    godice_set_logger(logger);
     godice_start_listening();
     printf("Hello, World!\n");
     
@@ -66,4 +69,8 @@ void deviceDisconnectedCallback(const char* identifier) {
 
 void listenerStoppedCallback(void) {
     printf("Listener stopped!\n");
+}
+
+void logger(const char* string) {
+    printf("%s", string);
 }

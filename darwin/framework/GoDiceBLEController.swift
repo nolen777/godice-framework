@@ -24,11 +24,14 @@ public class GoDiceBLEController: NSObject {
     public typealias DeviceDisconnectedCallback = (String) -> Void
     public typealias ListenerStoppedCallback = () -> Void
     
+    public typealias Logger = (String) -> Void
+    
     private var deviceFoundCallback: DeviceFoundCallback = {_, _ in }
     private var dataCallback: DataCallback = {_,_ in }
     private var deviceConnectedCallback: DeviceConnectedCallback = {_ in }
     private var deviceDisconnectedCallback: DeviceDisconnectedCallback = {_ in }
     private var listenerStoppedCallback: ListenerStoppedCallback = {}
+    private var logger: Logger = {_ in}
     
     public func setDeviceFoundCallback(cb: @escaping DeviceFoundCallback) -> Void {
         deviceFoundCallback = cb
@@ -42,6 +45,9 @@ public class GoDiceBLEController: NSObject {
     }
     public func setListenerStoppedCallback(cb: @escaping ListenerStoppedCallback) -> Void {
         listenerStoppedCallback = cb
+    }
+    public func setLogger(cb: @escaping Logger) -> Void {
+        logger = cb
     }
     
     public func connectDevice(identifier: String) -> Void {
@@ -58,6 +64,7 @@ public class GoDiceBLEController: NSObject {
     
     public func sendData(identifier: String, data: Data) -> Void {
         if let session = sessions[identifier] {
+            logger("Sending data!\n")
             session.peripheral.writeValue(data, for: session.writeCharacteristic, type: .withResponse)
         }
     }

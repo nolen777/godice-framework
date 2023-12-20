@@ -49,6 +49,13 @@ func SetListenerStoppedCallback(cb: @escaping () -> Void) -> Void {
     }
 }
 
+@_cdecl("set_logger")
+func SetLogger(cb: @escaping (UnsafePointer<CChar>) -> Void) -> Void {
+    btc.setLogger(cb: { (str: String) in
+        cb(str.cString(using: .utf8)!)
+    })
+}
+
 @_cdecl("connect_device")
 func ConnectDevice(identifier: UnsafePointer<CChar>) -> Void {
     btc.connectDevice(identifier: String(cString: identifier))

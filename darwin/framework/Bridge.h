@@ -20,12 +20,14 @@ typedef void (*GDDataCallbackFunction)(const char* identifier, uint32_t data_siz
 typedef void (*GDDeviceConnectedCallbackFunction)(const char* identifier);
 typedef void (*GDDeviceDisconnectedCallbackFunction)(const char* identifier);
 typedef void (*GDListenerStoppedCallbackFunction)(void);
+typedef void (*GDLogger)(const char* str);
 
 void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
                           GDDataCallbackFunction dataReceivedCallback,
                           GDDeviceConnectedCallbackFunction deviceConnectedCallback,
                           GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
                           GDListenerStoppedCallbackFunction listenerStoppedCallback);
+void godice_set_logger(GDLogger logger);
 void godice_start_listening(void);
 void godice_stop_listening(void);
 void godice_connect(const char* identifier);
