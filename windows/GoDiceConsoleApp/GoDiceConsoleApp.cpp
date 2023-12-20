@@ -1,9 +1,8 @@
 
 #include <future>
 #include <iostream>
-#include <iterator>
 #include <ostream>
-#include "../GoDiceDll/BleWinrtDll.h"
+#include "../GoDiceDll/GoDiceDll.h"
 
 using std::cerr;
 using std::endl;
@@ -37,17 +36,17 @@ void DeviceFoundCallback(const char* identifier, const char* name)
 
 void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data)
 {
-    cerr << "Received data! " << identifier << " : " << data_size << "b" << endl;;
+    cerr << "Received data! " << identifier << " : " << data_size << "b" << " : ";
     for (auto i=0; i<data_size; i++)
     {
         cerr << std::dec << (int)data[i] << " ";
     }
-    cerr << endl;
+    cerr << " : 0x";
     for (auto i=0; i<data_size; i++)
     {
         cerr << std::hex << (int)data[i];
     }
-    cerr << endl;
+    cerr << std::dec << endl;
     
     if (data_size > 3 && data[0] == 'C' && data[1] == 'o' && data[2] == 'l')
     {

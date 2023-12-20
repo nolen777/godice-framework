@@ -162,12 +162,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\GoDiceDll\BleWinrtDll.cpp" />
+    <ClCompile Include="..\GoDiceDll\GoDiceDll.cpp" />
     <ClCompile Include="..\GoDiceDll\stdafx.cpp" />
     <ClCompile Include="GoDiceConsoleApp.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\GoDiceDll\BleWinrtDll.h" />
+    <ClInclude Include="..\GoDiceDll\GoDiceDll.h" />
     <ClInclude Include="..\GoDiceDll\stdafx.h" />
     <ClInclude Include="..\GoDiceDll\targetver.h" />
   </ItemGroup>

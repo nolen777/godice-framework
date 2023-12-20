@@ -1,10 +1,9 @@
-// BleWinrtDll.cpp
+// GoDiceDll.cpp
 //
 
 #include "stdafx.h"
-#include <winrt/windows.foundation.h>
 
-#include "BleWinrtDll.h"
+#include "GoDiceDll.h"
 
 #include <ppltasks.h>
 #include <future>
@@ -29,7 +28,7 @@ using std::shared_ptr;
 
 static BluetoothLEAdvertisementWatcher gWatcher = nullptr;
 
-class DeviceSession;
+struct DeviceSession;
 
 static GDDeviceFoundCallbackFunction gDeviceFoundCallback = nullptr;
 static GDDataCallbackFunction gDataReceivedCallback = nullptr;
@@ -176,22 +175,32 @@ void godice_send(const char* identifier, uint32_t data_size, uint8_t* data)
 
 static void internalSend(const char* id, uint32_t data_size, uint8_t* data)
 {
-    auto session = gDevicesByIdentifier[id];
+    const auto session = gDevicesByIdentifier[id];
 
-    Log("Connection status is {}\n", (int)session->GetDevice()->ConnectionStatus());
-
-    DataWriter writer;
+    const DataWriter writer;
     writer.WriteBytes(winrt::array_view(data, data + data_size));
 
-    auto buf = writer.DetachBuffer();
+    const IBuffer buf = writer.DetachBuffer();
 
-   // Log("Preparing to send data: {} bytes, {} first value\n", (int)buf.Length(), (int)buf.data()[0]);
+    session->GetWriteCharacteristic().WriteValueAsync(buf, GattWriteOption::WriteWithoutResponse).Completed([](auto&& asyncWrite, auto&& status)
+    {
+        Log("Wrote data with status of {}\n", (int) status);
+    });
+}
 
-    auto result = session->GetWriteCharacteristic().WriteValueWithResultAsync(buf, GattWriteOption::WriteWithResponse).get();
-
-    auto status = result.Status();
-    auto err = result.ProtocolError();
-   // Log("Status is {}\n", (int)result);
+static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier)
+{
+    if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
+    {
+        {
+            scoped_lock lock(gMapMutex);
+            gDevicesByIdentifier.erase(identifier);
+        }
+        if (gDeviceDisconnectedCallback)
+        {
+            gDeviceDisconnectedCallback(identifier.c_str());
+        }
+    }
 }
 
 static void internalConnect(const char* id)
@@ -201,15 +210,9 @@ static void internalConnect(const char* id)
     auto session = gDevicesByIdentifier[identifier];
     auto& device = session->GetDevice();
 
-    device->ConnectionStatusChanged([=](const BluetoothLEDevice& dev, auto&& args)
+    device->ConnectionStatusChanged([identifier](const BluetoothLEDevice& dev, auto&& args)
     {
-        if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
-        {
-            if (gDeviceDisconnectedCallback)
-            {
-                gDeviceDisconnectedCallback(identifier.c_str());
-            }
-        }
+        internalConnectionChangedHandler(dev, identifier);
     });
 
     Log("get services\n");
@@ -263,9 +266,6 @@ static void internalConnect(const char* id)
 static void ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher,
                           const BluetoothLEAdvertisementReceivedEventArgs& args)
 {
-    const BluetoothLEAdvertisement& ad = args.Advertisement();
-
-
     uint64_t btAddr = args.BluetoothAddress();
     string identifier = to_string(btAddr);
     {
