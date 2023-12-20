@@ -2,12 +2,12 @@
 
 filegroup(
     name = "dll",
-    srcs = ["BleWinrtDll.dll"],
+    srcs = ["GoDiceDll.dll"],
 )
 
 load("@rules_pkg//:pkg.bzl", "pkg_zip")
 
 pkg_zip(
     name = "dll_zip",
-    srcs = ["BleWinrtDll.dll"],
+    srcs = ["GoDiceDll.dll"],
 )
