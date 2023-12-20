@@ -1,9 +1,8 @@
 
 #include <future>
 #include <iostream>
-#include <iterator>
 #include <ostream>
-#include "..\GoDiceDll\GoDiceDll.h"
+#include "../GoDiceDll/GoDiceDll.h"
 
 using std::cerr;
 using std::endl;
