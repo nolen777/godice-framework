@@ -22,7 +22,6 @@ using namespace Windows::Devices::Enumeration;
 
 using namespace Windows::Storage::Streams;
 
-using std::shared_ptr;
 
 static BluetoothLEAdvertisementWatcher gWatcher = nullptr;
 
@@ -37,9 +36,11 @@ static GDLogger gLogger = nullptr;
 
 using std::condition_variable;
 using std::exception;
+using std::future;
 using std::map;
 using std::mutex;
 using std::scoped_lock;
+using std::shared_ptr;
 using std::string;
 using std::unique_lock;
 
@@ -164,11 +165,13 @@ public:
         Prepare();
     }
 
-    bool Connect()
+    void Connect()
     {
-        if (connected) return true;
+        if (connected) {
+            return;
+        }
 
-        std::async(std::launch::async, [this]
+        std::thread([this]
         {
             {
                 unique_lock lk(prepared_lock);
@@ -191,9 +194,8 @@ public:
             });
 
             connected = true;
-        });
-
-        return true;
+            return true;
+        }).detach();
     }
 
     void Disconnect()
