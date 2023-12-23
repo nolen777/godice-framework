@@ -96,6 +96,10 @@ public class GoDiceBLEController: NSObject {
         if shouldScan && !centralManager.isScanning {
             print("Starting scan")
             
+            for (ident, session) in sessions {
+                deviceFoundCallback(ident, session.peripheral.name ?? "")
+            }
+            
             centralManager.scanForPeripherals(withServices: [GoDiceBLEController.serviceUUID])
         }
     }
@@ -104,11 +108,6 @@ public class GoDiceBLEController: NSObject {
         if !shouldScan && centralManager.isScanning {
             print("Stopping scan")
             centralManager.stopScan()
-            
-            sessions.forEach { (name, session) in
-                centralManager.cancelPeripheralConnection(session.peripheral)
-            }
-            sessions = [:]
             
             listenerStoppedCallback()
         }
