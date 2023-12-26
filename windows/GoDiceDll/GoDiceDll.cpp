@@ -97,11 +97,31 @@ public:
     {
         auto device = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddr).get();
         GattSession session = GattSession::FromDeviceIdAsync(device.BluetoothDeviceId()).get();
-        GattDeviceService service = device.GetGattServicesForUuidAsync(kServiceGuid).get().Services().GetAt(0);
-        GattCharacteristic notifyCh = service.GetCharacteristicsForUuidAsync(kNotifyGuid).get().Characteristics().
-                                              GetAt(0);
-        GattCharacteristic writeCh = service.GetCharacteristicsForUuidAsync(kWriteGuid).get().Characteristics().
-                                             GetAt(0);
+
+        const auto services = device.GetGattServicesForUuidAsync(kServiceGuid).get().Services();
+        if (services.Size() < 1)
+        {
+            Log("Failed to get services for %ull", bluetoothAddr);
+            return nullptr;
+        }
+        GattDeviceService service = services.GetAt(0);
+
+        const auto notifChs = service.GetCharacteristicsForUuidAsync(kNotifyGuid).get().Characteristics();
+        if (notifChs.Size() < 1)
+        {
+            Log("Failed to get notify characteristic");
+            return nullptr;
+        }
+        GattCharacteristic notifyCh = notifChs.GetAt(0);
+
+        const auto wrChs = service.GetCharacteristicsForUuidAsync(kWriteGuid).get().Characteristics();
+        if (wrChs.Size() < 1)
+        {
+            Log("Failed to get write characteristic");
+            return nullptr;
+        }
+        GattCharacteristic writeCh = wrChs.GetAt(0);
+        
         return std::make_shared<DeviceSession>(device, std::to_string(bluetoothAddr), session, service, notifyCh,
                                                writeCh);
     }
