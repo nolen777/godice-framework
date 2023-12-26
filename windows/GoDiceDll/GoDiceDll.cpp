@@ -223,8 +223,11 @@ void godice_start_listening()
 
     gWatcher.Stopped([=](auto&&, auto&&)
     {
-        Log("Watcher Stopped");
-        godice_stop_listening();
+        Log("Watcher Stopped\n");
+        if (gListenerStoppedCallback)
+        {
+            gListenerStoppedCallback();
+        }
     });
 
     gWatcher.Start();
@@ -344,6 +347,5 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 
 void godice_stop_listening()
 {
-    const std::scoped_lock lock(gMapMutex);
     gWatcher.Stop();
 }
