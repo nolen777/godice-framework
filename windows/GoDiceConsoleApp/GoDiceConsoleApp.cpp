@@ -2,6 +2,8 @@
 #include <future>
 #include <iostream>
 #include <ostream>
+#include <unordered_set>
+#include <string>
 #include "../GoDiceDll/GoDiceDll.h"
 
 using std::cerr;
@@ -17,6 +19,9 @@ void Log(const char* str);
 
 void RequestColor(const char* identifier);
 
+std::mutex connectedMutex;
+std::unordered_set<std::string> connectedDevices;
+
 int main(int argc, char* argv[])
 {
     cerr << "Hello, World!" << endl;
@@ -30,6 +35,10 @@ int main(int argc, char* argv[])
 
 void DeviceFoundCallback(const char* identifier, const char* name)
 {
+    {
+        std::scoped_lock lk(connectedMutex);
+        if (connectedDevices.contains(identifier)) return;
+    }
     cerr << "Device found! " << identifier << " : " << name << endl;
     godice_connect(identifier);
 }
@@ -58,16 +67,26 @@ void DeviceConnectedCallback(const char* identifier)
 {
     cerr << "Device connected! " << identifier << endl;
 
+    {
+        std::scoped_lock lk(connectedMutex);
+        connectedDevices.insert(identifier);
+    }
+
     std::string id(identifier);
-    std::async(std::launch::async, [id]
+    std::thread([id]
     {
         RequestColor(id.c_str());
-    });
+    }).detach();
 }
 
 void DeviceDisconnectedCallback(const char* identifier)
 {
     cerr << "Device disconnected! " << identifier << endl;
+
+    {
+        std::scoped_lock lk(connectedMutex);
+        connectedDevices.erase(identifier);
+    }
 }
 
 void ListenerStoppedCallback(void)

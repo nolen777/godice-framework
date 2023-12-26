@@ -1,12 +1,15 @@
 // GoDiceDll.cpp
 //
 
+#include "GoDiceDll.h"
+
 #include "stdafx.h"
 
 #include "GoDiceDll.h"
 
 #include <ppltasks.h>
 #include <future>
+#include <unordered_set>
 
 #pragma comment(lib, "windowsapp")
 
@@ -36,15 +39,17 @@ static GDLogger gLogger = nullptr;
 using std::condition_variable;
 using std::exception;
 using std::shared_future;
-using std::map;
 using std::mutex;
 using std::scoped_lock;
 using std::shared_ptr;
 using std::string;
 using std::unique_lock;
+using std::unordered_map;
+using std::pmr::unordered_set;
 
 static mutex gMapMutex;
-static map<string, shared_ptr<DeviceSession>> gDevicesByIdentifier;
+static unordered_map<string, shared_ptr<DeviceSession>> gDevicesByIdentifier;
+static unordered_set<string> gDevicesInProgress;
 
 static inline constexpr guid kServiceGuid = guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
 static inline constexpr guid kWriteGuid = guid("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
@@ -68,10 +73,10 @@ static void Log(const char* str, Args&& args...)
     }
 }
 
-static void ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher,
+static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watcher,
                           const BluetoothLEAdvertisementReceivedEventArgs& args);
 static void internalConnect(const string& identifier);
-static void internalSend(const char* id, uint32_t data_size, uint8_t* data);
+static void internalSend(const string& identifier, const IBuffer& buffer);
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier);
 
 struct DeviceSession
@@ -80,10 +85,12 @@ private:
     const BluetoothLEDevice device_;
     const string identifier_;
     const string name_;
-    GattSession session_ = nullptr;
-    GattDeviceService service_ = nullptr;
-    GattCharacteristic write_characteristic_ = nullptr;
-    GattCharacteristic notify_characteristic_ = nullptr;
+    const GattSession session_;
+    const GattDeviceService service_;
+    const GattCharacteristic write_characteristic_;
+    const GattCharacteristic notify_characteristic_;
+    mutable GattCharacteristic::ValueChanged_revoker notification_revoker_;
+    mutable BluetoothLEDevice::ConnectionStatusChanged_revoker connection_changed_revoker_;
 
 public:
     static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
@@ -111,24 +118,31 @@ public:
     {
     }
 
+    void NotifyCharacteristicValueChanged(const GattValueChangedEventArgs& args) const
+    {
+        if (gDataReceivedCallback != nullptr)
+        {
+            const IBuffer& data = args.CharacteristicValue();
+            gDataReceivedCallback(identifier_.c_str(), data.Length(), data.data());
+        }
+    }
+
     void Connect() const
     {
-        device_.ConnectionStatusChanged([this](auto&& dev, auto&& result)
+        connection_changed_revoker_ = device_.ConnectionStatusChanged(auto_revoke, [this](auto&& dev, auto&& result)
         {
             internalConnectionChangedHandler(dev, identifier_);
         });
 
         session_.MaintainConnection(true);
 
-        notify_characteristic_.ValueChanged([=](auto&& ch, auto&& args)
+        notification_revoker_ = notify_characteristic_.ValueChanged(auto_revoke, [this](auto&& ch, auto&& args)
         {
-            if (gDataReceivedCallback != nullptr)
-            {
-                const IBuffer& data = args.CharacteristicValue();
-                gDataReceivedCallback(identifier_.c_str(), data.Length(), data.data());
-            }
+            NotifyCharacteristicValueChanged(args);
         });
-        notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify);
+        auto configResult = notify_characteristic_
+            .WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify)
+            .get();
 
         if (gDeviceConnectedCallback)
         {
@@ -138,24 +152,10 @@ public:
 
     void Disconnect() const
     {
-        notify_characteristic_.ValueChanged([](auto&& ch, auto&& args)
-        {
-        });
-        device_.ConnectionStatusChanged([](auto&& ch, auto&& args)
-        {
-        });
+        notification_revoker_.revoke();
+        connection_changed_revoker_.revoke();
 
         session_.MaintainConnection(false);
-    }
-
-    void SetNotifyCharacteristic(const GattCharacteristic& nCh)
-    {
-        notify_characteristic_ = nCh;
-    }
-
-    void SetWriteCharacteristic(const GattCharacteristic& wCh)
-    {
-        write_characteristic_ = wCh;
     }
 
     const string& DeviceName() const { return name_; }
@@ -199,7 +199,7 @@ void godice_start_listening()
     gWatcher.ScanningMode(BluetoothLEScanningMode::Active);
     gWatcher.AdvertisementFilter().Advertisement().ServiceUuids().Append(kServiceGuid);
 
-    auto result = gWatcher.Received(ReceivedEvent);
+    auto result = gWatcher.Received(ReceivedDeviceFoundEvent);
 
     gWatcher.Stopped([=](auto&&, auto&&)
     {
@@ -221,24 +221,42 @@ void godice_connect(const char* identifier)
 
 void godice_disconnect(const char* identifier)
 {
-    gDevicesByIdentifier[identifier]->Disconnect();
+    shared_ptr<DeviceSession> session = nullptr;
+
+    {
+        scoped_lock lk(gMapMutex);
+        session = gDevicesByIdentifier[identifier];
+        if (session == nullptr) return;
+    }
+    session->Disconnect();
 }
 
-void godice_send(const char* identifier, uint32_t data_size, uint8_t* data)
+void godice_send(const char* id, uint32_t data_size, uint8_t* data)
 {
-    internalSend(identifier, data_size, data);
-}
-
-static void internalSend(const char* id, uint32_t data_size, uint8_t* data)
-{
-    const auto& session = gDevicesByIdentifier[id];
-
+    const string identifier(id);
+    
     const DataWriter writer;
     writer.WriteBytes(winrt::array_view(data, data + data_size));
 
     const IBuffer buf = writer.DetachBuffer();
 
-    auto status = session->GetWriteCharacteristic().WriteValueAsync(buf, GattWriteOption::WriteWithoutResponse).get();
+    std::thread([buf, identifier]()
+    {
+        internalSend(identifier, buf);
+    }).detach();
+}
+
+static void internalSend(const string& identifier, const IBuffer& buffer)
+{
+    shared_ptr<DeviceSession> session;
+
+    {
+        scoped_lock lk(gMapMutex);
+        session = gDevicesByIdentifier[identifier];
+        if (session == nullptr) return;
+    }
+
+    auto status = session->GetWriteCharacteristic().WriteValueAsync(buffer, GattWriteOption::WriteWithoutResponse).get();
     Log("Wrote data with status of {}\n", (int)status);
 }
 
@@ -255,29 +273,53 @@ static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const
 
 static void internalConnect(const string& identifier)
 {
-    scoped_lock lk(gMapMutex);
-    const auto& device = gDevicesByIdentifier[identifier];
-    device->Connect();
+    shared_ptr<DeviceSession> session;
+    {
+        scoped_lock lk(gMapMutex);
+        session = gDevicesByIdentifier[identifier];
+        if (session == nullptr) return;
+    }
+    session->Connect();
 }
 
-static void ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher,
+static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watcher,
                           const BluetoothLEAdvertisementReceivedEventArgs& args)
 {
     uint64_t btAddr = args.BluetoothAddress();
     string identifier = std::to_string(btAddr);
+
+    std::thread([identifier, btAddr]
     {
-        std::scoped_lock lock(gMapMutex);
-        if (gDevicesByIdentifier.count(identifier) == 0)
         {
-            gDevicesByIdentifier.emplace(std::make_pair(identifier, DeviceSession::MakeSession(btAddr)));
+            std::scoped_lock lock(gMapMutex);
+            if (gDevicesInProgress.contains(identifier)) return;
+            if (gDevicesByIdentifier.count(identifier) == 0)
+            {
+                gDevicesInProgress.insert(identifier);
+            } else
+            {
+                if (gDeviceFoundCallback)
+                {
+                    const auto& device = gDevicesByIdentifier[identifier];
+                    gDeviceFoundCallback(identifier.c_str(), device->DeviceName().c_str());
+                    return;
+                }
+            }
         }
 
-        if (gDeviceFoundCallback)
+        auto newSession = DeviceSession::MakeSession(btAddr);
+
         {
-            const auto& device = gDevicesByIdentifier[identifier];
-            gDeviceFoundCallback(identifier.c_str(), device->DeviceName().c_str());
+            std::scoped_lock lock(gMapMutex);
+            gDevicesByIdentifier.emplace(std::make_pair(identifier, newSession));
+            gDevicesInProgress.erase(identifier);
+
+            if (gDeviceFoundCallback)
+            {
+                gDeviceFoundCallback(identifier.c_str(), newSession->DeviceName().c_str());
+            }
         }
-    }
+    }).detach();
 }
 
 void godice_stop_listening()
