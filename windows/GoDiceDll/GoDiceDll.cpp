@@ -230,6 +230,15 @@ void godice_start_listening()
         }
     });
 
+    if (gDeviceFoundCallback)
+    {
+        scoped_lock lk(gMapMutex);
+        for (const auto& kv : gDevicesByIdentifier)
+        {
+            gDeviceFoundCallback(kv.first.c_str(), kv.second->DeviceName().c_str());
+        }
+    }
+
     gWatcher.Start();
 }
 
@@ -331,6 +340,11 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
         }
 
         auto newSession = DeviceSession::MakeSession(btAddr);
+        if (newSession == nullptr)
+        {
+            Log("Failed to create new session\n");
+            return;
+        }
 
         {
             std::scoped_lock lock(gMapMutex);
