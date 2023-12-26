@@ -22,7 +22,6 @@ using namespace Windows::Devices::Enumeration;
 
 using namespace Windows::Storage::Streams;
 
-
 static BluetoothLEAdvertisementWatcher gWatcher = nullptr;
 
 struct DeviceSession;
@@ -36,7 +35,7 @@ static GDLogger gLogger = nullptr;
 
 using std::condition_variable;
 using std::exception;
-using std::future;
+using std::shared_future;
 using std::map;
 using std::mutex;
 using std::scoped_lock;
@@ -71,143 +70,82 @@ static void Log(const char* str, Args&& args...)
 
 static void ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher,
                           const BluetoothLEAdvertisementReceivedEventArgs& args);
-static void internalConnect(const char* identifier);
+static void internalConnect(const string& identifier);
 static void internalSend(const char* id, uint32_t data_size, uint8_t* data);
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier);
 
 struct DeviceSession
 {
 private:
-    const shared_ptr<BluetoothLEDevice> device_;
-    const string identifier;
+    const BluetoothLEDevice device_;
+    const string identifier_;
+    const string name_;
     GattSession session_ = nullptr;
+    GattDeviceService service_ = nullptr;
     GattCharacteristic write_characteristic_ = nullptr;
     GattCharacteristic notify_characteristic_ = nullptr;
 
-    bool connected = false;
-
-    bool prepared = false;
-    mutex prepared_lock;
-    condition_variable prepared_condition;
-
-    void Prepare()
-    {
-        Log("Preparing to connect\n");
-
-        device_->ConnectionStatusChanged([this](const BluetoothLEDevice& dev, auto&& args)
-        {
-            internalConnectionChangedHandler(dev, identifier);
-        });
-
-        Log("get session\n");
-        GattSession::FromDeviceIdAsync(device_->BluetoothDeviceId()).Completed([=](auto&& gattSessionAsync, auto&& y)
-        {
-            session_ = gattSessionAsync.get();
-
-            Log("get services\n");
-            device_->GetGattServicesForUuidAsync(kServiceGuid).Completed([=](auto&& getServicesAsync, auto&& result)
-            {
-                const auto& services = getServicesAsync.get().Services();
-
-                for (const GattDeviceService& svc : services)
-                {
-                    if (svc.Uuid() != kServiceGuid) continue;
-
-                    Log("Starting GetCharacteristics\n");
-
-                    svc.GetCharacteristicsAsync().Completed([=](auto&& getChsAsync, auto&& chResult)
-                    {
-                        for (const auto chs = getChsAsync.get().Characteristics(); const GattCharacteristic& ch : chs)
-                        {
-                            if (IsEqualGUID(ch.Uuid(), kWriteGuid))
-                            {
-                                SetWriteCharacteristic(ch);
-                            }
-                            else if (IsEqualGUID(ch.Uuid(), kNotifyGuid))
-                            {
-                                ch.WriteClientCharacteristicConfigurationDescriptorAsync(
-                                    GattClientCharacteristicConfigurationDescriptorValue::Notify).Completed(
-                                    [=](auto&& writeConfigStatusAsync, auto&& wcsResult)
-                                    {
-                                        auto writeConfigStatus = writeConfigStatusAsync.get();
-
-                                        if (writeConfigStatus == GattCommunicationStatus::Success)
-                                        {
-                                            SetNotifyCharacteristic(ch);
-
-                                            {
-                                                scoped_lock lk(prepared_lock);
-                                                prepared = true;
-                                                prepared_condition.notify_all();
-                                            }
-
-                                            if (gDeviceConnectedCallback)
-                                            {
-                                                gDeviceConnectedCallback(identifier.c_str());
-                                            }
-                                        }
-                                        else
-                                        {
-                                            throw exception("oops");
-                                        }
-                                    });
-                            }
-                        }
-                    });
-                }
-            });
-        });
-    }
-
 public:
-    DeviceSession(const shared_ptr<BluetoothLEDevice>& dev, const string& ident) : device_(dev), identifier(ident)
+    static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
     {
-        Prepare();
+        auto device = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddr).get();
+        GattSession session = GattSession::FromDeviceIdAsync(device.BluetoothDeviceId()).get();
+        GattDeviceService service = device.GetGattServicesForUuidAsync(kServiceGuid).get().Services().GetAt(0);
+        GattCharacteristic notifyCh = service.GetCharacteristicsForUuidAsync(kNotifyGuid).get().Characteristics().
+                                              GetAt(0);
+        GattCharacteristic writeCh = service.GetCharacteristicsForUuidAsync(kWriteGuid).get().Characteristics().
+                                             GetAt(0);
+        return std::make_shared<DeviceSession>(device, std::to_string(bluetoothAddr), session, service, notifyCh,
+                                               writeCh);
     }
 
-    void Connect()
+    DeviceSession(
+        const BluetoothLEDevice& dev,
+        const string& ident,
+        const GattSession& session,
+        const GattDeviceService& service,
+        const GattCharacteristic& notifyCh,
+        const GattCharacteristic& writeCh
+    ) : device_(dev), identifier_(ident), name_(to_string(dev.Name())), session_(session), service_(service),
+        notify_characteristic_(notifyCh), write_characteristic_(writeCh)
     {
-        if (connected) {
-            return;
-        }
+    }
 
-        std::thread([this]
+    void Connect() const
+    {
+        device_.ConnectionStatusChanged([this](auto&& dev, auto&& result)
         {
+            internalConnectionChangedHandler(dev, identifier_);
+        });
+
+        session_.MaintainConnection(true);
+
+        notify_characteristic_.ValueChanged([=](auto&& ch, auto&& args)
+        {
+            if (gDataReceivedCallback != nullptr)
             {
-                unique_lock lk(prepared_lock);
-                while (!prepared)
-                {
-                    prepared_condition.wait(lk);
-                }
+                const IBuffer& data = args.CharacteristicValue();
+                gDataReceivedCallback(identifier_.c_str(), data.Length(), data.data());
             }
-            if (connected) return true;
+        });
+        notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify);
 
-            session_.MaintainConnection(true);
-        
-            notify_characteristic_.ValueChanged([=](auto&& ch, auto&& args)
-            {
-                if (gDataReceivedCallback != nullptr)
-                {
-                    const IBuffer& data = args.CharacteristicValue();
-                    gDataReceivedCallback(identifier.c_str(), data.Length(), data.data());
-                }
-            });
-
-            connected = true;
-            return true;
-        }).detach();
+        if (gDeviceConnectedCallback)
+        {
+            gDeviceConnectedCallback(identifier_.c_str());
+        }
     }
 
-    void Disconnect()
+    void Disconnect() const
     {
-        if (!connected) return;
-        if (!prepared) return;
-        
-        notify_characteristic_.ValueChanged([](auto&& ch, auto&& args) {});
-        device_->ConnectionStatusChanged([](auto&& ch, auto&& args) {});
+        notify_characteristic_.ValueChanged([](auto&& ch, auto&& args)
+        {
+        });
+        device_.ConnectionStatusChanged([](auto&& ch, auto&& args)
+        {
+        });
 
         session_.MaintainConnection(false);
-        connected = false;
     }
 
     void SetNotifyCharacteristic(const GattCharacteristic& nCh)
@@ -220,7 +158,7 @@ public:
         write_characteristic_ = wCh;
     }
 
-    const shared_ptr<BluetoothLEDevice> GetDevice() { return device_; }
+    const string& DeviceName() const { return name_; }
 
     auto GetWriteCharacteristic() const -> const GattCharacteristic&
     {
@@ -229,7 +167,7 @@ public:
 
     ~DeviceSession()
     {
-        if (connected) Disconnect();
+        Disconnect();
     }
 };
 
@@ -274,7 +212,11 @@ void godice_start_listening()
 
 void godice_connect(const char* identifier)
 {
-    internalConnect(identifier);
+    string strIdent = identifier;
+    std::thread([strIdent]()
+    {
+        internalConnect(strIdent);
+    }).detach();
 }
 
 void godice_disconnect(const char* identifier)
@@ -289,17 +231,15 @@ void godice_send(const char* identifier, uint32_t data_size, uint8_t* data)
 
 static void internalSend(const char* id, uint32_t data_size, uint8_t* data)
 {
-    const auto session = gDevicesByIdentifier[id];
+    const auto& session = gDevicesByIdentifier[id];
 
     const DataWriter writer;
     writer.WriteBytes(winrt::array_view(data, data + data_size));
 
     const IBuffer buf = writer.DetachBuffer();
 
-    session->GetWriteCharacteristic().WriteValueAsync(buf, GattWriteOption::WriteWithoutResponse).Completed([](auto&& asyncWrite, auto&& status)
-    {
-        Log("Wrote data with status of {}\n", (int) status);
-    });
+    auto status = session->GetWriteCharacteristic().WriteValueAsync(buf, GattWriteOption::WriteWithoutResponse).get();
+    Log("Wrote data with status of {}\n", (int)status);
 }
 
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier)
@@ -313,10 +253,11 @@ static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const
     }
 }
 
-static void internalConnect(const char* id)
+static void internalConnect(const string& identifier)
 {
-    string identifier(id);
-    gDevicesByIdentifier[identifier]->Connect();
+    scoped_lock lk(gMapMutex);
+    const auto& device = gDevicesByIdentifier[identifier];
+    device->Connect();
 }
 
 static void ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher,
@@ -326,33 +267,17 @@ static void ReceivedEvent(const BluetoothLEAdvertisementWatcher& watcher,
     string identifier = std::to_string(btAddr);
     {
         std::scoped_lock lock(gMapMutex);
-        if (gDevicesByIdentifier.count(identifier) > 0)
+        if (gDevicesByIdentifier.count(identifier) == 0)
         {
-            return;
+            gDevicesByIdentifier.emplace(std::make_pair(identifier, DeviceSession::MakeSession(btAddr)));
+        }
+
+        if (gDeviceFoundCallback)
+        {
+            const auto& device = gDevicesByIdentifier[identifier];
+            gDeviceFoundCallback(identifier.c_str(), device->DeviceName().c_str());
         }
     }
-
-    BluetoothLEDevice::FromBluetoothAddressAsync(btAddr).Completed([=](auto&& deviceAsync, auto&& res)
-    {
-        shared_ptr<BluetoothLEDevice> device = std::make_shared<BluetoothLEDevice>(deviceAsync.get());
-
-        {
-            std::scoped_lock lock(gMapMutex);
-            if (gDevicesByIdentifier.count(identifier) > 0)
-            {
-                return;
-            }
-
-
-            shared_ptr<DeviceSession> session = std::make_shared<DeviceSession>(device, identifier);
-            gDevicesByIdentifier[identifier] = session;
-
-            if (gDeviceFoundCallback)
-            {
-                gDeviceFoundCallback(identifier.c_str(), to_string(device->Name()).c_str());
-            }
-        }
-    });
 }
 
 void godice_stop_listening()
