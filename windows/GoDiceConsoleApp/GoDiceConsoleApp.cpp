@@ -4,6 +4,8 @@
 #include <ostream>
 #include <unordered_set>
 #include <string>
+
+#include "../GoDiceDll/GoDiceDll.h"
 #include "../GoDiceDll/GoDiceDll.h"
 
 using std::cerr;
@@ -22,6 +24,7 @@ void RequestColor(const char* identifier);
 
 std::mutex connectedMutex;
 std::unordered_set<std::string> connectedDevices;
+std::unordered_set<std::string> connectingDevices;
 
 int main(int argc, char* argv[])
 {
@@ -45,6 +48,8 @@ void DeviceFoundCallback(const char* identifier, const char* name)
     {
         std::scoped_lock lk(connectedMutex);
         if (connectedDevices.contains(identifier)) return;
+        if (connectingDevices.contains(identifier)) return;
+        connectingDevices.insert(identifier);
     }
     cerr << "Device found! " << identifier << " : " << name << endl;
     godice_connect(identifier);
@@ -73,6 +78,10 @@ void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data)
 void DeviceConnectionFailedCallback(const char* identifier)
 {
     cerr << "Device failed to connect! " << identifier << endl;
+    {
+        std::scoped_lock lk(connectedMutex);
+        connectingDevices.erase(identifier);
+    }
 }
 
 
@@ -83,6 +92,7 @@ void DeviceConnectedCallback(const char* identifier)
     {
         std::scoped_lock lk(connectedMutex);
         connectedDevices.insert(identifier);
+        connectingDevices.erase(identifier);
     }
 
     std::string id(identifier);
@@ -99,6 +109,7 @@ void DeviceDisconnectedCallback(const char* identifier)
     {
         std::scoped_lock lk(connectedMutex);
         connectedDevices.erase(identifier);
+        connectingDevices.erase(identifier);
     }
 
     godice_connect(identifier);

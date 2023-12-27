@@ -155,15 +155,17 @@ public:
                 return;
             }
             service_ = services.GetAt(0);
+            Log("Found service {}\n", to_string(to_hstring(service_.Uuid())));
 
-            const auto notifChs = service_.GetCharacteristicsForUuidAsync(kNotifyGuid).get().Characteristics();
-            if (notifChs.Size() < 1)
+            const auto notifChs = service_.GetCharacteristicsForUuidAsync(kNotifyGuid, BluetoothCacheMode::Cached).get().Characteristics();
+            if (notifChs.Size() > 0)
+            {
+                notify_characteristic_ = notifChs.GetAt(0);
+            } else
             {
                 Log("Failed to get notify characteristic for {}\n", name_);
                 gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
             }
-            notify_characteristic_ = notifChs.GetAt(0);
 
             auto configResult = notify_characteristic_
                                 .WriteClientCharacteristicConfigurationDescriptorAsync(
@@ -327,13 +329,25 @@ void godice_send(const char* id, uint32_t data_size, uint8_t* data)
 static void internalSend(const string& identifier, const IBuffer& buffer)
 {
     shared_ptr<DeviceSession> session;
-
+    GattCharacteristic writeCharacteristic = nullptr;
+    
     {
         scoped_lock lk(gMapMutex);
         session = gDevicesByIdentifier[identifier];
-        if (session == nullptr) return;
+        if (session == nullptr)
+        {
+            Log("No session found for {}\n", identifier);
+            return;
+        }
     }
 
+    writeCharacteristic = session->GetWriteCharacteristic();
+    if (writeCharacteristic == nullptr)
+    {
+        Log("No write characteritic found for {}\n", identifier);
+        return;
+    }
+    
     try
     {
         session->GetWriteCharacteristic().WriteValueAsync(buffer, GattWriteOption::WriteWithoutResponse).Completed(
@@ -384,6 +398,7 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 {
     uint64_t btAddr = args.BluetoothAddress();
     string identifier = std::to_string(btAddr);
+    Log("Received device found for {}\n", identifier);
 
     std::thread([identifier, btAddr]
     {
@@ -398,8 +413,8 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
             {
                 if (gDeviceFoundCallback)
                 {
-                    const auto& device = gDevicesByIdentifier[identifier];
-                    gDeviceFoundCallback(identifier.c_str(), device->DeviceName().c_str());
+                    const auto& session = gDevicesByIdentifier[identifier];
+                    gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
                     return;
                 }
             }
