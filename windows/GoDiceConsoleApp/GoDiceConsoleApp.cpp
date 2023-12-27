@@ -12,6 +12,7 @@ using std::endl;
 void DeviceFoundCallback(const char* identifier, const char* name);
 void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data);
 void DeviceConnectedCallback(const char* identifier);
+void DeviceConnectionFailedCallback(const char* identifier);
 void DeviceDisconnectedCallback(const char* identifier);
 void ListenerStoppedCallback(void);
 
@@ -26,7 +27,13 @@ int main(int argc, char* argv[])
 {
     cerr << "Hello, World!" << endl;
     godice_set_logger(Log);
-    godice_set_callbacks(DeviceFoundCallback, DataCallback, DeviceConnectedCallback, DeviceDisconnectedCallback, ListenerStoppedCallback);
+    godice_set_callbacks(
+        DeviceFoundCallback,
+        DataCallback,
+        DeviceConnectedCallback,
+        DeviceConnectionFailedCallback,
+        DeviceDisconnectedCallback,
+        ListenerStoppedCallback);
     godice_start_listening();
 
     while(1);
@@ -63,6 +70,12 @@ void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data)
     }
 }
 
+void DeviceConnectionFailedCallback(const char* identifier)
+{
+    cerr << "Device failed to connect! " << identifier << endl;
+}
+
+
 void DeviceConnectedCallback(const char* identifier)
 {
     cerr << "Device connected! " << identifier << endl;
@@ -87,6 +100,8 @@ void DeviceDisconnectedCallback(const char* identifier)
         std::scoped_lock lk(connectedMutex);
         connectedDevices.erase(identifier);
     }
+
+    godice_connect(identifier);
 }
 
 void ListenerStoppedCallback(void)
