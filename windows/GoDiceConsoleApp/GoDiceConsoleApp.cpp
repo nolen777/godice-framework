@@ -2,6 +2,10 @@
 #include <future>
 #include <iostream>
 #include <ostream>
+#include <unordered_set>
+#include <string>
+
+#include "../GoDiceDll/GoDiceDll.h"
 #include "../GoDiceDll/GoDiceDll.h"
 
 using std::cerr;
@@ -10,6 +14,7 @@ using std::endl;
 void DeviceFoundCallback(const char* identifier, const char* name);
 void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data);
 void DeviceConnectedCallback(const char* identifier);
+void DeviceConnectionFailedCallback(const char* identifier);
 void DeviceDisconnectedCallback(const char* identifier);
 void ListenerStoppedCallback(void);
 
@@ -17,11 +22,21 @@ void Log(const char* str);
 
 void RequestColor(const char* identifier);
 
+std::mutex connectedMutex;
+std::unordered_set<std::string> connectedDevices;
+std::unordered_set<std::string> connectingDevices;
+
 int main(int argc, char* argv[])
 {
     cerr << "Hello, World!" << endl;
     godice_set_logger(Log);
-    godice_set_callbacks(DeviceFoundCallback, DataCallback, DeviceConnectedCallback, DeviceDisconnectedCallback, ListenerStoppedCallback);
+    godice_set_callbacks(
+        DeviceFoundCallback,
+        DataCallback,
+        DeviceConnectedCallback,
+        DeviceConnectionFailedCallback,
+        DeviceDisconnectedCallback,
+        ListenerStoppedCallback);
     godice_start_listening();
 
     while(1);
@@ -30,6 +45,12 @@ int main(int argc, char* argv[])
 
 void DeviceFoundCallback(const char* identifier, const char* name)
 {
+    {
+        std::scoped_lock lk(connectedMutex);
+        if (connectedDevices.contains(identifier)) return;
+        if (connectingDevices.contains(identifier)) return;
+        connectingDevices.insert(identifier);
+    }
     cerr << "Device found! " << identifier << " : " << name << endl;
     godice_connect(identifier);
 }
@@ -54,20 +75,44 @@ void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data)
     }
 }
 
+void DeviceConnectionFailedCallback(const char* identifier)
+{
+    cerr << "Device failed to connect! " << identifier << endl;
+    {
+        std::scoped_lock lk(connectedMutex);
+        connectingDevices.erase(identifier);
+    }
+}
+
+
 void DeviceConnectedCallback(const char* identifier)
 {
     cerr << "Device connected! " << identifier << endl;
 
+    {
+        std::scoped_lock lk(connectedMutex);
+        connectedDevices.insert(identifier);
+        connectingDevices.erase(identifier);
+    }
+
     std::string id(identifier);
-    std::async(std::launch::async, [id]
+    std::thread([id]
     {
         RequestColor(id.c_str());
-    });
+    }).detach();
 }
 
 void DeviceDisconnectedCallback(const char* identifier)
 {
     cerr << "Device disconnected! " << identifier << endl;
+
+    {
+        std::scoped_lock lk(connectedMutex);
+        connectedDevices.erase(identifier);
+        connectingDevices.erase(identifier);
+    }
+
+    godice_connect(identifier);
 }
 
 void ListenerStoppedCallback(void)

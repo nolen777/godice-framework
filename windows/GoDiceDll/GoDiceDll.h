@@ -6,6 +6,7 @@ extern "C" {
 	typedef void (*GDDeviceFoundCallbackFunction)(const char* identifier, const char* name);
 	typedef void (*GDDataCallbackFunction)(const char* identifier, uint32_t data_size, uint8_t* data);
 	typedef void (*GDDeviceConnectedCallbackFunction)(const char* identifier);
+	typedef void (*GDDeviceConnectionFailedCallbackFunction)(const char* identifier);
 	typedef void (*GDDeviceDisconnectedCallbackFunction)(const char* identifier);
 	typedef void (*GDListenerStoppedCallbackFunction)(void);
 
@@ -15,6 +16,7 @@ extern "C" {
 		GDDeviceFoundCallbackFunction deviceFoundCallback,
 		GDDataCallbackFunction dataReceivedCallback,
 		GDDeviceConnectedCallbackFunction deviceConnectedCallback,
+		GDDeviceConnectionFailedCallbackFunction deviceConnectionFailedCallback,
 		GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
 		GDListenerStoppedCallbackFunction listenerStoppedCallback);
 	__declspec(dllexport) void godice_set_logger(GDLogger logger);
