@@ -90,7 +90,8 @@ private:
     GattDeviceService service_;
     GattCharacteristic write_characteristic_;
     GattCharacteristic notify_characteristic_;
-    event_token notify_token;
+    event_token notify_token_;
+    event_token connection_status_changed_token_;
 
 public:
     static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
@@ -148,6 +149,11 @@ public:
             
             device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
 
+            connection_status_changed_token_ = device_.ConnectionStatusChanged([this](auto&& dev, auto&& args)
+            {
+                internalConnectionChangedHandler(dev, identifier_);
+            });
+            
             const auto services = device_.GetGattServicesForUuidAsync(kServiceGuid).get().Services();
             if (services.Size() < 1)
             {
@@ -194,7 +200,7 @@ public:
             }
             write_characteristic_ = wrChs.GetAt(0);
 
-            notify_token = notify_characteristic_.ValueChanged([this](auto&& ch, auto&& args)
+            notify_token_ = notify_characteristic_.ValueChanged([this](auto&& ch, auto&& args)
             {
                 NotifyCharacteristicValueChanged(args);
             });
@@ -227,7 +233,7 @@ public:
         if (notify_characteristic_ != nullptr)
         {
             notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
-            notify_characteristic_.ValueChanged(std::exchange(notify_token, {}));
+            notify_characteristic_.ValueChanged(std::exchange(notify_token_, {}));
             notify_characteristic_ = nullptr;
         }
         write_characteristic_ = nullptr;
@@ -239,6 +245,8 @@ public:
         }
         if (device_ != nullptr)
         {
+            device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
+        
             device_.Close();
             device_ = nullptr;
         }
