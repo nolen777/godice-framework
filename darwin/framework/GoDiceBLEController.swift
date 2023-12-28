@@ -81,6 +81,10 @@ public class GoDiceBLEController: NSObject {
             }
             if listening {
                 maybeStartScan()
+                
+                for (ident, session) in sessions {
+                    deviceFoundCallback(ident, session.peripheral.name ?? "")
+                }
             } else {
                 maybeStopScan()
             }
