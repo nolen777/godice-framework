@@ -154,7 +154,14 @@ public:
                 internalConnectionChangedHandler(dev, identifier_);
             });
             
-            const auto services = device_.GetGattServicesForUuidAsync(kServiceGuid).get().Services();
+            const auto servicesResult = device_.GetGattServicesForUuidAsync(kServiceGuid).get();
+            if (servicesResult.Status() != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get services for {}\n", name_);
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
+            const auto services = servicesResult.Services();
             if (services.Size() < 1)
             {
                 Log("Failed to get services for {}\n", name_);
@@ -170,8 +177,15 @@ public:
                 return;
             }
 
-            const auto notifChs = service_.GetCharacteristicsForUuidAsync(kNotifyGuid).
-                                           get().Characteristics();
+            const auto notifChsResponse = service_.GetCharacteristicsForUuidAsync(kNotifyGuid).
+                                           get();
+            if (notifChsResponse.Status() != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get notify characteristic for {}\n", name_);
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
+            auto notifChs = notifChsResponse.Characteristics();
             if (notifChs.Size() < 1)
             {
                 Log("Failed to get notify characteristic for {}\n", name_);
@@ -185,8 +199,22 @@ public:
                                 .WriteClientCharacteristicConfigurationDescriptorAsync(
                                     GattClientCharacteristicConfigurationDescriptorValue::Notify)
                                 .get();
+            if (configResult != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get set notification config for {}\n", name_);
+                
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
 
-            const auto wrChs = service_.GetCharacteristicsForUuidAsync(kWriteGuid).get().Characteristics();
+            const auto wrChsResult = service_.GetCharacteristicsForUuidAsync(kWriteGuid).get();
+            if (wrChsResult.Status() != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get write characteristic for {}\n", name_);
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
+            const auto wrChs = wrChsResult.Characteristics();
             if (wrChs.Size() < 1)
             {
                 Log("Failed to get write characteristic for {}\n", name_);
