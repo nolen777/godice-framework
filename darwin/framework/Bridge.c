@@ -23,6 +23,7 @@ extern void send_data(const char* identifier, uint32_t data_size, uint8_t* data)
 void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
                           GDDataCallbackFunction dataReceivedCallback,
                           GDDeviceConnectedCallbackFunction deviceConnectedCallback,
+                          GDDeviceConnectionFailedCallbackFunction deviceConnectionFailedCallback,
                           GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
                           GDListenerStoppedCallbackFunction listenerStoppedCallback) {
     set_device_found_callback(^(const char* identifier, const char* name) {

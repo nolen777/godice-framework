@@ -21,6 +21,7 @@ public class GoDiceBLEController: NSObject {
     public typealias DeviceFoundCallback = (String, String) -> Void
     public typealias DataCallback = (String, Data) -> Void
     public typealias DeviceConnectedCallback = (String) -> Void
+    public typealias DeviceConnectionFailedCallback = (String) -> Void
     public typealias DeviceDisconnectedCallback = (String) -> Void
     public typealias ListenerStoppedCallback = () -> Void
     
@@ -29,6 +30,7 @@ public class GoDiceBLEController: NSObject {
     private var deviceFoundCallback: DeviceFoundCallback = {_, _ in }
     private var dataCallback: DataCallback = {_,_ in }
     private var deviceConnectedCallback: DeviceConnectedCallback = {_ in }
+    private var deviceConnectionFailedCallback: DeviceConnectionFailedCallback = {_ in }
     private var deviceDisconnectedCallback: DeviceDisconnectedCallback = {_ in }
     private var listenerStoppedCallback: ListenerStoppedCallback = {}
     private var logger: Logger = {_ in}
@@ -39,6 +41,9 @@ public class GoDiceBLEController: NSObject {
     public func setDataCallback(cb: @escaping DataCallback) -> Void { dataCallback = cb }
     public func setDeviceConnectedCallback(cb: @escaping DeviceConnectedCallback) -> Void {
         deviceConnectedCallback = cb
+    }    
+    public func setDeviceConnectionFailedCallback(cb: @escaping DeviceConnectionFailedCallback) -> Void {
+        deviceConnectionFailedCallback = cb
     }
     public func setDeviceDisconnectedCallback(cb: @escaping DeviceDisconnectedCallback) -> Void {
         deviceDisconnectedCallback = cb
@@ -53,6 +58,9 @@ public class GoDiceBLEController: NSObject {
     public func connectDevice(identifier: String) -> Void {
         if let session = sessions[identifier] {
             centralManager.connect(session.peripheral)
+        } else {
+            logger("No session found for \(identifier)")
+            deviceConnectionFailedCallback(identifier)
         }
     }
     
@@ -94,7 +102,7 @@ public class GoDiceBLEController: NSObject {
     
     func maybeStartScan() {
         if shouldScan && !centralManager.isScanning {
-            print("Starting scan")
+            logger("Starting scan")
             
             for (ident, session) in sessions {
                 deviceFoundCallback(ident, session.peripheral.name ?? "")
@@ -106,20 +114,30 @@ public class GoDiceBLEController: NSObject {
     
     func maybeStopScan() {
         if !shouldScan && centralManager.isScanning {
-            print("Stopping scan")
+            logger("Stopping scan")
             centralManager.stopScan()
             
             listenerStoppedCallback()
         }
     }
     private class DiceSession: NSObject, CBPeripheralDelegate {
-        let updateCallback: (CBPeripheral, Data?) -> Void
+        let connectedCallback: (CBPeripheral) -> Void
+        let connectionFailedCallback: (CBPeripheral) -> Void
+        let dataCallback: (CBPeripheral, Data) -> Void
         let peripheral: CBPeripheral
+        let logger: Logger
         var writeCharacteristic: CBCharacteristic!
         
-        init(peripheral: CBPeripheral, updateCallback: @escaping (CBPeripheral, Data?) -> Void) {
+        init(peripheral: CBPeripheral,
+             connectedCallback: @escaping(CBPeripheral) -> Void,
+             connectionFailedCallback: @escaping(CBPeripheral) -> Void,
+             dataCallback: @escaping (CBPeripheral, Data) -> Void,
+        logger: @escaping Logger) {
             self.peripheral = peripheral
-            self.updateCallback = updateCallback
+            self.connectedCallback = connectedCallback
+            self.connectionFailedCallback = connectionFailedCallback
+            self.dataCallback = dataCallback
+            self.logger = logger
             super.init()
             peripheral.delegate = self
         }
@@ -137,33 +155,37 @@ public class GoDiceBLEController: NSObject {
                 for service in services {
                     peripheral.discoverCharacteristics([GoDiceBLEController.writeUUID, GoDiceBLEController.notifyUUID], for: service)
                 }
+            } else {
+                connectionFailedCallback(peripheral)
             }
         }
         
         func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
             if let characteristics = service.characteristics {
                 guard let notifyCH = characteristics.first(where: { $0.uuid == GoDiceBLEController.notifyUUID }) else {
-                    print("Unable to find notify characteristic")
+                    logger("Unable to find notify characteristic")
                     return
                 }
                 guard let writeCH = characteristics.first(where: { $0.uuid == GoDiceBLEController.writeUUID }) else {
-                    print("Unable to find write characteristic")
+                    logger("Unable to find write characteristic")
                     return
                 }
                 writeCharacteristic = writeCH
                 peripheral.setNotifyValue(true, for: notifyCH)
+                
+                connectedCallback(peripheral)
+            } else {
+                connectionFailedCallback(peripheral)
             }
-            
-            updateCallback(peripheral, nil)
         }
         
         func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
             guard let value = characteristic.value else {
-                print("unable to fetch data")
+                logger("unable to fetch data")
                 return
             }
             
-            updateCallback(peripheral, value)
+            dataCallback(peripheral, value)
         }
     }
 }
@@ -175,7 +197,7 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             maybeStartScan()
             
         case .unknown:
-            print("Unknown bluetooth status")
+            logger("Unknown bluetooth status")
             
         case .resetting:
             maybeStopScan()
@@ -190,24 +212,29 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             maybeStopScan()
             
         @unknown default:
-            print("Unknown bluetooth status")
+            logger("Unknown bluetooth status")
             
         }
     }
     
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        sessions[peripheral.identifier.uuidString] = DiceSession(peripheral: peripheral, updateCallback: sessionUpdated)
+        sessions[peripheral.identifier.uuidString] = DiceSession(
+            peripheral: peripheral, 
+            connectedCallback: deviceConnected,
+            connectionFailedCallback: deviceConnectionFailed,
+            dataCallback: dataReceived,
+        logger: logger)
         
         deviceFoundCallback(peripheral.identifier.uuidString, peripheral.name ?? "")
     }
     
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         guard let name = peripheral.name else {
-            print("Peripheral has no name")
+            logger("Peripheral has no name")
             return
         }
         guard let session = sessions[peripheral.identifier.uuidString] else {
-            print("No session for \(name)")
+            logger("No session for \(name)")
             return
         }
         
@@ -215,17 +242,20 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        print("Received error \(error?.localizedDescription ?? "unknown")")
+        logger("Received error \(error?.localizedDescription ?? "unknown")")
         
-        sessions.removeValue(forKey: peripheral.identifier.uuidString)
         deviceDisconnectedCallback(peripheral.identifier.uuidString)
     }
     
-    func sessionUpdated(peripheral: CBPeripheral, results: Data?) {
-        if let data = results {
-            dataCallback(peripheral.identifier.uuidString, data)
-        } else {
-            deviceConnectedCallback(peripheral.identifier.uuidString)
-        }
+    func deviceConnected(peripheral: CBPeripheral) {
+        deviceConnectedCallback(peripheral.identifier.uuidString)
+    }
+    
+    func deviceConnectionFailed(peripheral: CBPeripheral) {
+        deviceConnectionFailedCallback(peripheral.identifier.uuidString)
+    }
+    
+    func dataReceived(peripheral: CBPeripheral, results: Data) {
+        dataCallback(peripheral.identifier.uuidString, results)
     }
 }

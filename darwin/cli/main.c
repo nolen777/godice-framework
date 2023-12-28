@@ -11,6 +11,7 @@
 void deviceFoundCallback(const char* identifier, const char* name);
 void dataReceivedCallback(const char* identifier, uint32_t data_size, uint8_t* data);
 void deviceConnectedCallback(const char* identifier);
+void deviceConnectionFailedCallback(const char* identifier);
 void deviceDisconnectedCallback(const char* identifier);
 void listenerStoppedCallback(void);
 
@@ -20,6 +21,7 @@ int main(int argc, const char * argv[]) {
     godice_set_callbacks(deviceFoundCallback,
                          dataReceivedCallback,
                          deviceConnectedCallback, 
+                         deviceConnectionFailedCallback,
                          deviceDisconnectedCallback,
                          listenerStoppedCallback);
     godice_set_logger(logger);
@@ -61,6 +63,10 @@ void deviceConnectedCallback(const char* identifier) {
     
     uint8_t msg[] = { 23 };
     godice_send(identifier, 1, msg);
+}
+
+void deviceConnectionFailedCallback(const char* identifier) {
+    printf("Failed to connect device %s!\n", identifier);
 }
 
 void deviceDisconnectedCallback(const char* identifier) {

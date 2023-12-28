@@ -35,6 +35,13 @@ func SetDeviceConnectedCallback(cb: @escaping (UnsafePointer<CChar>) -> Void) ->
     })
 }
 
+@_cdecl("set_device_connection_failed_callback")
+func SetDeviceConnectionFailedCallback(cb: @escaping (UnsafePointer<CChar>) -> Void) -> Void {
+    btc.setDeviceConnectionFailedCallback(cb: { (identifier: String) in
+        cb(identifier.cString(using: .utf8)!)
+    })
+}
+
 @_cdecl("set_device_disconnected_callback")
 func SetDeviceDisconnectedCallback(cb: @escaping (UnsafePointer<CChar>) -> Void) -> Void {
     btc.setDeviceDisconnectedCallback(cb: { (identifier: String) in

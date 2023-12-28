@@ -18,6 +18,7 @@ extern “C” {
 typedef void (*GDDeviceFoundCallbackFunction)(const char* identifier, const char* name);
 typedef void (*GDDataCallbackFunction)(const char* identifier, uint32_t data_size, uint8_t* data);
 typedef void (*GDDeviceConnectedCallbackFunction)(const char* identifier);
+typedef void (*GDDeviceConnectionFailedCallbackFunction)(const char* identifier);
 typedef void (*GDDeviceDisconnectedCallbackFunction)(const char* identifier);
 typedef void (*GDListenerStoppedCallbackFunction)(void);
 typedef void (*GDLogger)(const char* str);
@@ -25,6 +26,7 @@ typedef void (*GDLogger)(const char* str);
 void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
                           GDDataCallbackFunction dataReceivedCallback,
                           GDDeviceConnectedCallbackFunction deviceConnectedCallback,
+                          GDDeviceConnectionFailedCallbackFunction deviceConnectionFailedCallback,
                           GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
                           GDListenerStoppedCallbackFunction listenerStoppedCallback);
 void godice_set_logger(GDLogger logger);
