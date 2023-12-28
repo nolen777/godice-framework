@@ -5,8 +5,6 @@
 
 #include "stdafx.h"
 
-#include "GoDiceDll.h"
-
 #include <ppltasks.h>
 #include <future>
 #include <unordered_set>
@@ -93,6 +91,8 @@ private:
     event_token notify_token_;
     event_token connection_status_changed_token_;
 
+    mutex connection_lock_;
+
 public:
     static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
     {
@@ -146,7 +146,8 @@ public:
         try
         {
             Disconnect(false);
-            
+
+            scoped_lock lk(connection_lock_);
             device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
 
             connection_status_changed_token_ = device_.ConnectionStatusChanged([this](auto&& dev, auto&& args)
@@ -154,7 +155,14 @@ public:
                 internalConnectionChangedHandler(dev, identifier_);
             });
             
-            const auto services = device_.GetGattServicesForUuidAsync(kServiceGuid).get().Services();
+            const auto servicesResult = device_.GetGattServicesForUuidAsync(kServiceGuid).get();
+            if (servicesResult.Status() != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get services for {}\n", name_);
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
+            const auto services = servicesResult.Services();
             if (services.Size() < 1)
             {
                 Log("Failed to get services for {}\n", name_);
@@ -170,16 +178,18 @@ public:
                 return;
             }
 
-            const auto notifChs = service_.GetCharacteristicsForUuidAsync(kNotifyGuid).
-                                           get().Characteristics();
+            const auto notifChsResponse = service_.GetCharacteristicsForUuidAsync(kNotifyGuid).
+                                           get();
+            if (notifChsResponse.Status() != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get notify characteristic for {}\n", name_);
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
+            auto notifChs = notifChsResponse.Characteristics();
             if (notifChs.Size() < 1)
             {
                 Log("Failed to get notify characteristic for {}\n", name_);
-
-                const auto allChs = service_.GetCharacteristicsAsync().
-                                           get().Characteristics();
-
-                Log("Found {} characteristics\n", allChs.Size());
                 
                 gDeviceConnectionFailedCallback(identifier_.c_str());
                 return;
@@ -190,8 +200,22 @@ public:
                                 .WriteClientCharacteristicConfigurationDescriptorAsync(
                                     GattClientCharacteristicConfigurationDescriptorValue::Notify)
                                 .get();
+            if (configResult != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get set notification config for {}\n", name_);
+                
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
 
-            const auto wrChs = service_.GetCharacteristicsForUuidAsync(kWriteGuid).get().Characteristics();
+            const auto wrChsResult = service_.GetCharacteristicsForUuidAsync(kWriteGuid).get();
+            if (wrChsResult.Status() != GattCommunicationStatus::Success)
+            {
+                Log("Failed to get write characteristic for {}\n", name_);
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
+            const auto wrChs = wrChsResult.Characteristics();
             if (wrChs.Size() < 1)
             {
                 Log("Failed to get write characteristic for {}\n", name_);
@@ -230,6 +254,7 @@ public:
 
     void Disconnect(bool fireCallback)
     {
+        scoped_lock lk(connection_lock_);
         if (notify_characteristic_ != nullptr)
         {
             notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
