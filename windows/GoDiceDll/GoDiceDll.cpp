@@ -5,8 +5,6 @@
 
 #include "stdafx.h"
 
-#include "GoDiceDll.h"
-
 #include <ppltasks.h>
 #include <future>
 #include <unordered_set>
@@ -93,6 +91,8 @@ private:
     event_token notify_token_;
     event_token connection_status_changed_token_;
 
+    mutex connection_lock_;
+
 public:
     static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
     {
@@ -146,7 +146,8 @@ public:
         try
         {
             Disconnect(false);
-            
+
+            scoped_lock lk(connection_lock_);
             device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
 
             connection_status_changed_token_ = device_.ConnectionStatusChanged([this](auto&& dev, auto&& args)
@@ -253,6 +254,7 @@ public:
 
     void Disconnect(bool fireCallback)
     {
+        scoped_lock lk(connection_lock_);
         if (notify_characteristic_ != nullptr)
         {
             notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
