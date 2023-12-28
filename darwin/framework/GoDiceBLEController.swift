@@ -21,6 +21,7 @@ public class GoDiceBLEController: NSObject {
     public typealias DeviceFoundCallback = (String, String) -> Void
     public typealias DataCallback = (String, Data) -> Void
     public typealias DeviceConnectedCallback = (String) -> Void
+    public typealias DeviceConnectionFailedCallback = (String) -> Void
     public typealias DeviceDisconnectedCallback = (String) -> Void
     public typealias ListenerStoppedCallback = () -> Void
     
@@ -29,6 +30,7 @@ public class GoDiceBLEController: NSObject {
     private var deviceFoundCallback: DeviceFoundCallback = {_, _ in }
     private var dataCallback: DataCallback = {_,_ in }
     private var deviceConnectedCallback: DeviceConnectedCallback = {_ in }
+    private var deviceConnectionFailedCallback: DeviceConnectionFailedCallback = {_ in }
     private var deviceDisconnectedCallback: DeviceDisconnectedCallback = {_ in }
     private var listenerStoppedCallback: ListenerStoppedCallback = {}
     private var logger: Logger = {_ in}
@@ -39,6 +41,9 @@ public class GoDiceBLEController: NSObject {
     public func setDataCallback(cb: @escaping DataCallback) -> Void { dataCallback = cb }
     public func setDeviceConnectedCallback(cb: @escaping DeviceConnectedCallback) -> Void {
         deviceConnectedCallback = cb
+    }    
+    public func setDeviceConnectionFailedCallback(cb: @escaping DeviceConnectionFailedCallback) -> Void {
+        deviceConnectionFailedCallback = cb
     }
     public func setDeviceDisconnectedCallback(cb: @escaping DeviceDisconnectedCallback) -> Void {
         deviceDisconnectedCallback = cb
@@ -113,13 +118,20 @@ public class GoDiceBLEController: NSObject {
         }
     }
     private class DiceSession: NSObject, CBPeripheralDelegate {
-        let updateCallback: (CBPeripheral, Data?) -> Void
+        let connectedCallback: (CBPeripheral) -> Void
+        let connectionFailedCallback: (CBPeripheral) -> Void
+        let dataCallback: (CBPeripheral, Data) -> Void
         let peripheral: CBPeripheral
         var writeCharacteristic: CBCharacteristic!
         
-        init(peripheral: CBPeripheral, updateCallback: @escaping (CBPeripheral, Data?) -> Void) {
+        init(peripheral: CBPeripheral,
+             connectedCallback: @escaping(CBPeripheral) -> Void,
+             connectionFailedCallback: @escaping(CBPeripheral) -> Void,
+             dataCallback: @escaping (CBPeripheral, Data) -> Void) {
             self.peripheral = peripheral
-            self.updateCallback = updateCallback
+            self.connectedCallback = connectedCallback
+            self.connectionFailedCallback = connectionFailedCallback
+            self.dataCallback = dataCallback
             super.init()
             peripheral.delegate = self
         }
@@ -137,6 +149,8 @@ public class GoDiceBLEController: NSObject {
                 for service in services {
                     peripheral.discoverCharacteristics([GoDiceBLEController.writeUUID, GoDiceBLEController.notifyUUID], for: service)
                 }
+            } else {
+                connectionFailedCallback(peripheral)
             }
         }
         
@@ -152,9 +166,11 @@ public class GoDiceBLEController: NSObject {
                 }
                 writeCharacteristic = writeCH
                 peripheral.setNotifyValue(true, for: notifyCH)
+                
+                connectedCallback(peripheral)
+            } else {
+                connectionFailedCallback(peripheral)
             }
-            
-            updateCallback(peripheral, nil)
         }
         
         func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -163,7 +179,7 @@ public class GoDiceBLEController: NSObject {
                 return
             }
             
-            updateCallback(peripheral, value)
+            dataCallback(peripheral, value)
         }
     }
 }
@@ -196,7 +212,11 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        sessions[peripheral.identifier.uuidString] = DiceSession(peripheral: peripheral, updateCallback: sessionUpdated)
+        sessions[peripheral.identifier.uuidString] = DiceSession(
+            peripheral: peripheral, 
+            connectedCallback: deviceConnected,
+            connectionFailedCallback: deviceConnectionFailed,
+            dataCallback: dataReceived)
         
         deviceFoundCallback(peripheral.identifier.uuidString, peripheral.name ?? "")
     }
@@ -221,11 +241,15 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
         deviceDisconnectedCallback(peripheral.identifier.uuidString)
     }
     
-    func sessionUpdated(peripheral: CBPeripheral, results: Data?) {
-        if let data = results {
-            dataCallback(peripheral.identifier.uuidString, data)
-        } else {
-            deviceConnectedCallback(peripheral.identifier.uuidString)
-        }
+    func deviceConnected(peripheral: CBPeripheral) {
+        deviceConnectedCallback(peripheral.identifier.uuidString)
+    }
+    
+    func deviceConnectionFailed(peripheral: CBPeripheral) {
+        deviceConnectionFailedCallback(peripheral.identifier.uuidString)
+    }
+    
+    func dataReceived(peripheral: CBPeripheral, results: Data) {
+        dataCallback(peripheral.identifier.uuidString, results)
     }
 }
