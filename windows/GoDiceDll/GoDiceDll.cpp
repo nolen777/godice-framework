@@ -145,7 +145,7 @@ public:
     {
         try
         {
-            Disconnect();
+            Disconnect(false);
             
             device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
 
@@ -228,7 +228,7 @@ public:
         }
     }
 
-    void Disconnect()
+    void Disconnect(bool fireCallback)
     {
         if (notify_characteristic_ != nullptr)
         {
@@ -250,6 +250,10 @@ public:
             device_.Close();
             device_ = nullptr;
         }
+        
+        if (fireCallback && gDeviceDisconnectedCallback) {
+            gDeviceDisconnectedCallback(identifier_.c_str());
+        }
     }
 
     const string& DeviceName() const { return name_; }
@@ -261,7 +265,7 @@ public:
 
     ~DeviceSession()
     {
-        Disconnect();
+        Disconnect(true);
     }
 };
 
@@ -336,7 +340,7 @@ void godice_disconnect(const char* identifier)
         session = gDevicesByIdentifier[identifier];
         if (session == nullptr) return;
     }
-    session->Disconnect();
+    session->Disconnect(true);
 }
 
 void godice_send(const char* id, uint32_t data_size, uint8_t* data)
