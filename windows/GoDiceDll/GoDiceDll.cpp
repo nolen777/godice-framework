@@ -175,11 +175,6 @@ public:
             if (notifChs.Size() < 1)
             {
                 Log("Failed to get notify characteristic for {}\n", name_);
-
-                const auto allChs = service_.GetCharacteristicsAsync().
-                                           get().Characteristics();
-
-                Log("Found {} characteristics\n", allChs.Size());
                 
                 gDeviceConnectionFailedCallback(identifier_.c_str());
                 return;
