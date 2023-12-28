@@ -83,15 +83,14 @@ static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const
 struct DeviceSession
 {
 private:
-    const BluetoothLEDevice device_;
+    BluetoothLEDevice device_;
+    const uint64_t bluetoothAddress_;
     const string identifier_;
     const string name_;
-    GattSession session_;
     GattDeviceService service_;
     GattCharacteristic write_characteristic_;
     GattCharacteristic notify_characteristic_;
-    GattCharacteristic::ValueChanged_revoker notification_revoker_;
-    BluetoothLEDevice::ConnectionStatusChanged_revoker connection_changed_revoker_;
+    event_token notify_token;
 
 public:
     static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
@@ -100,7 +99,7 @@ public:
         {
             auto device = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddr).get();
 
-            return std::make_shared<DeviceSession>(device, std::to_string(bluetoothAddr), nullptr, nullptr, nullptr,
+            return std::make_shared<DeviceSession>(device, bluetoothAddr, nullptr, nullptr, nullptr,
                                                    nullptr);
         }
         catch (std::exception& e)
@@ -122,12 +121,12 @@ public:
 
     DeviceSession(
         const BluetoothLEDevice& dev,
-        const string& ident,
+        const uint64_t btAddr,
         const GattSession& session,
         const GattDeviceService& service,
         const GattCharacteristic& notifyCh,
         const GattCharacteristic& writeCh
-    ) : device_(dev), identifier_(ident), name_(to_string(dev.Name())), session_(session), service_(service),
+    ) : device_(dev), bluetoothAddress_(btAddr), identifier_(std::to_string(btAddr)), name_(to_string(dev.Name())), service_(service),
         notify_characteristic_(notifyCh), write_characteristic_(writeCh)
     {
     }
@@ -145,7 +144,9 @@ public:
     {
         try
         {
-            session_ = GattSession::FromDeviceIdAsync(device_.BluetoothDeviceId()).get();
+            Disconnect();
+            
+            device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
 
             const auto services = device_.GetGattServicesForUuidAsync(kServiceGuid).get().Services();
             if (services.Size() < 1)
@@ -155,17 +156,29 @@ public:
                 return;
             }
             service_ = services.GetAt(0);
-            Log("Found service {}\n", to_string(to_hstring(service_.Uuid())));
 
-            const auto notifChs = service_.GetCharacteristicsForUuidAsync(kNotifyGuid, BluetoothCacheMode::Cached).get().Characteristics();
-            if (notifChs.Size() > 0)
+            if (service_.RequestAccessAsync().get() != DeviceAccessStatus::Allowed)
             {
-                notify_characteristic_ = notifChs.GetAt(0);
-            } else
+                Log("Failed to get access to service");
+                gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
+            }
+
+            const auto notifChs = service_.GetCharacteristicsForUuidAsync(kNotifyGuid).
+                                           get().Characteristics();
+            if (notifChs.Size() < 1)
             {
                 Log("Failed to get notify characteristic for {}\n", name_);
+
+                const auto allChs = service_.GetCharacteristicsAsync().
+                                           get().Characteristics();
+
+                Log("Found {} characteristics\n", allChs.Size());
+                
                 gDeviceConnectionFailedCallback(identifier_.c_str());
+                return;
             }
+            notify_characteristic_ = notifChs.GetAt(0);
 
             auto configResult = notify_characteristic_
                                 .WriteClientCharacteristicConfigurationDescriptorAsync(
@@ -181,14 +194,7 @@ public:
             }
             write_characteristic_ = wrChs.GetAt(0);
 
-            connection_changed_revoker_ = device_.ConnectionStatusChanged(auto_revoke, [this](auto&& dev, auto&& result)
-            {
-                internalConnectionChangedHandler(dev, identifier_);
-            });
-
-            session_.MaintainConnection(true);
-
-            notification_revoker_ = notify_characteristic_.ValueChanged(auto_revoke, [this](auto&& ch, auto&& args)
+            notify_token = notify_characteristic_.ValueChanged([this](auto&& ch, auto&& args)
             {
                 NotifyCharacteristicValueChanged(args);
             });
@@ -218,10 +224,24 @@ public:
 
     void Disconnect()
     {
-        notification_revoker_.revoke();
-        connection_changed_revoker_.revoke();
-
-        session_.MaintainConnection(false);
+        if (notify_characteristic_ != nullptr)
+        {
+            notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
+            notify_characteristic_.ValueChanged(std::exchange(notify_token, {}));
+            notify_characteristic_ = nullptr;
+        }
+        write_characteristic_ = nullptr;
+        
+        if (service_ != nullptr)
+        {
+            service_.Close();
+            service_ = nullptr;
+        }
+        if (device_ != nullptr)
+        {
+            device_.Close();
+            device_ = nullptr;
+        }
     }
 
     const string& DeviceName() const { return name_; }
@@ -330,7 +350,7 @@ static void internalSend(const string& identifier, const IBuffer& buffer)
 {
     shared_ptr<DeviceSession> session;
     GattCharacteristic writeCharacteristic = nullptr;
-    
+
     {
         scoped_lock lk(gMapMutex);
         session = gDevicesByIdentifier[identifier];
@@ -347,7 +367,7 @@ static void internalSend(const string& identifier, const IBuffer& buffer)
         Log("No write characteritic found for {}\n", identifier);
         return;
     }
-    
+
     try
     {
         session->GetWriteCharacteristic().WriteValueAsync(buffer, GattWriteOption::WriteWithoutResponse).Completed(
@@ -398,46 +418,42 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 {
     uint64_t btAddr = args.BluetoothAddress();
     string identifier = std::to_string(btAddr);
-    Log("Received device found for {}\n", identifier);
 
-    std::thread([identifier, btAddr]
+    std::scoped_lock lock(gMapMutex);
+    if (gDevicesInProgress.contains(identifier)) return;
+    if (gDevicesByIdentifier.count(identifier) == 0)
     {
+        gDevicesInProgress.insert(identifier);
+        std::thread([identifier, btAddr]
         {
-            std::scoped_lock lock(gMapMutex);
-            if (gDevicesInProgress.contains(identifier)) return;
-            if (gDevicesByIdentifier.count(identifier) == 0)
+            auto newSession = DeviceSession::MakeSession(btAddr);
+            if (newSession == nullptr)
             {
-                gDevicesInProgress.insert(identifier);
+                Log("Failed to create new session\n");
+                return;
             }
-            else
+
             {
+                std::scoped_lock lock(gMapMutex);
+                gDevicesByIdentifier.emplace(std::make_pair(identifier, newSession));
+                gDevicesInProgress.erase(identifier);
+
                 if (gDeviceFoundCallback)
                 {
-                    const auto& session = gDevicesByIdentifier[identifier];
-                    gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
-                    return;
+                    gDeviceFoundCallback(identifier.c_str(), newSession->DeviceName().c_str());
                 }
             }
-        }
-
-        auto newSession = DeviceSession::MakeSession(btAddr);
-        if (newSession == nullptr)
+        }).detach();
+    }
+    else
+    {
+        if (gDeviceFoundCallback)
         {
-            Log("Failed to create new session\n");
-            return;
+            const auto& session = gDevicesByIdentifier[identifier];
+            gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
         }
-
-        {
-            std::scoped_lock lock(gMapMutex);
-            gDevicesByIdentifier.emplace(std::make_pair(identifier, newSession));
-            gDevicesInProgress.erase(identifier);
-
-            if (gDeviceFoundCallback)
-            {
-                gDeviceFoundCallback(identifier.c_str(), newSession->DeviceName().c_str());
-            }
-        }
-    }).detach();
+        return;
+    }
 }
 
 void godice_stop_listening()
