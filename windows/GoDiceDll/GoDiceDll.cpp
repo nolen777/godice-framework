@@ -250,6 +250,10 @@ public:
             device_.Close();
             device_ = nullptr;
         }
+        
+        if (gDeviceDisconnectedCallback) {
+            gDeviceDisconnectedCallback(identifier_.c_str());
+        }
     }
 
     const string& DeviceName() const { return name_; }
