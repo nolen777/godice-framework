@@ -1,4 +1,5 @@
 _godice_set_callbacks
+_godice_set_logger
 _godice_start_listening
 _godice_stop_listening
 _godice_connect
