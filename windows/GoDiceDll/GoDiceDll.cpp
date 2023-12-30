@@ -95,7 +95,6 @@ private:
 
     void lockedDisconnect()
     {
-        scoped_lock lk(connection_lock_);
         if (notify_characteristic_ != nullptr)
         {
             notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
@@ -312,7 +311,6 @@ public:
     {
         scoped_lock lk(connection_lock_);
         lockedDisconnect();
-        
         if (gDeviceDisconnectedCallback) {
             gDeviceDisconnectedCallback(identifier_.c_str());
         }
