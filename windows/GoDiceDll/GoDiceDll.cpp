@@ -528,4 +528,21 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 void godice_stop_listening()
 {
     gWatcher.Stop();
+
+    gMapMutex.lock();
+
+    while (gDevicesInProgress.count() > 0)
+    {
+        gMapMutex.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        gMapMutex.lock();
+    }
+
+    for (const auto& kv : gDevicesByIdentifier)
+    {
+        kv.second->Disconnect();
+    }
+    gDevicesByIdentifier.clear();
+    
+    gMapMutex.unlock();
 }
