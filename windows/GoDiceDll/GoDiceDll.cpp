@@ -125,7 +125,7 @@ public:
         {
             auto device = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddr).get();
 
-            return std::make_shared<DeviceSession>(device, bluetoothAddr, nullptr, nullptr, nullptr,
+            return std::make_shared<DeviceSession>(device, bluetoothAddr, nullptr, nullptr,
                                                    nullptr);
         }
         catch (std::exception& e)
@@ -148,7 +148,6 @@ public:
     DeviceSession(
         const BluetoothLEDevice& dev,
         const uint64_t btAddr,
-        const GattSession& session,
         const GattDeviceService& service,
         const GattCharacteristic& notifyCh,
         const GattCharacteristic& writeCh
