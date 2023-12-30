@@ -90,6 +90,15 @@ public class GoDiceBLEController: NSObject {
         }
     }
     
+    func reset() {
+        listening = false
+        
+        for (ident, _) in sessions {
+            disconnectDevice(identifier: ident)
+        }
+        sessions.removeAll()
+    }
+    
     public override init() {
         centralManager = CBCentralManager(delegate: nil, queue: queue)
         super.init()

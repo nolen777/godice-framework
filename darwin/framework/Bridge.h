@@ -35,6 +35,7 @@ void godice_stop_listening(void);
 void godice_connect(const char* identifier);
 void godice_disconnect(const char* identifier);
 void godice_send(const char* identifier, uint32_t data_size, uint8_t* data);
+void godice_reset(void);
     
 #ifdef __cplusplus
 }

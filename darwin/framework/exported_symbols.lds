@@ -5,3 +5,4 @@ _godice_stop_listening
 _godice_connect
 _godice_disconnect
 _godice_send
+_godice_reset
