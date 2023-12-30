@@ -93,6 +93,31 @@ private:
 
     mutex connection_lock_;
 
+    void lockedDisconnect()
+    {
+        scoped_lock lk(connection_lock_);
+        if (notify_characteristic_ != nullptr)
+        {
+            notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
+            notify_characteristic_.ValueChanged(std::exchange(notify_token_, {}));
+            notify_characteristic_ = nullptr;
+        }
+        write_characteristic_ = nullptr;
+        
+        if (service_ != nullptr)
+        {
+            service_.Close();
+            service_ = nullptr;
+        }
+        if (device_ != nullptr)
+        {
+            device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
+        
+            device_.Close();
+            device_ = nullptr;
+        }
+    }
+    
 public:
     static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
     {
@@ -145,7 +170,7 @@ public:
     {
         try
         {
-            Disconnect(false);
+            lockedDisconnect();
 
             scoped_lock lk(connection_lock_);
             device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
@@ -252,29 +277,42 @@ public:
         }
     }
 
-    void Disconnect(bool fireCallback)
+    fire_and_forget Send(const IBuffer& msg)
     {
         scoped_lock lk(connection_lock_);
-        if (notify_characteristic_ != nullptr)
+        if (write_characteristic_ == nullptr)
         {
-            notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
-            notify_characteristic_.ValueChanged(std::exchange(notify_token_, {}));
-            notify_characteristic_ = nullptr;
+            Log("No write characteritic found for {}\n", identifier_);
+            co_return;
         }
-        write_characteristic_ = nullptr;
-        
-        if (service_ != nullptr)
+
+        try
         {
-            service_.Close();
-            service_ = nullptr;
+            auto status = co_await write_characteristic_.WriteValueAsync(msg, GattWriteOption::WriteWithoutResponse);
+            if (status != GattCommunicationStatus::Success)
+            {
+                Log("Write data failed for {} with status {}\n", identifier_, (int)status);
+            }
         }
-        if (device_ != nullptr)
+        catch (std::exception& e)
         {
-            device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
-        
-            device_.Close();
-            device_ = nullptr;
+            Log("Caught exception while writing! {}\n", e.what());
         }
+        catch (winrt::hresult_error& e)
+        {
+            Log("Caught exception while writing! {}\n", to_string(e.message()));
+        }
+        catch (...)
+        {
+            auto e = std::current_exception();
+            Log("Caught exception while writing!\n");
+        }
+    }
+
+    void Disconnect()
+    {
+        scoped_lock lk(connection_lock_);
+        lockedDisconnect();
         
         if (fireCallback && gDeviceDisconnectedCallback) {
             gDeviceDisconnectedCallback(identifier_.c_str());
@@ -283,14 +321,9 @@ public:
 
     const string& DeviceName() const { return name_; }
 
-    auto GetWriteCharacteristic() const -> const GattCharacteristic&
-    {
-        return write_characteristic_;
-    }
-
     ~DeviceSession()
     {
-        Disconnect(true);
+        Disconnect();
     }
 };
 
@@ -365,7 +398,7 @@ void godice_disconnect(const char* identifier)
         session = gDevicesByIdentifier[identifier];
         if (session == nullptr) return;
     }
-    session->Disconnect(true);
+    session->Disconnect();
 }
 
 void godice_send(const char* id, uint32_t data_size, uint8_t* data)
