@@ -276,18 +276,18 @@ public:
         }
     }
 
-    fire_and_forget Send(const IBuffer& msg)
+    void Send(const IBuffer& msg)
     {
         scoped_lock lk(connection_lock_);
         if (write_characteristic_ == nullptr)
         {
-            Log("No write characteritic found for {}\n", identifier_);
-            co_return;
+            Log("No write characteristic found for {}\n", identifier_);
+            return;
         }
 
         try
         {
-            auto status = co_await write_characteristic_.WriteValueAsync(msg, GattWriteOption::WriteWithoutResponse);
+            auto status = write_characteristic_.WriteValueAsync(msg, GattWriteOption::WriteWithoutResponse).get();
             if (status != GattCommunicationStatus::Success)
             {
                 Log("Write data failed for {} with status {}\n", identifier_, (int)status);
@@ -313,7 +313,7 @@ public:
         scoped_lock lk(connection_lock_);
         lockedDisconnect();
         
-        if (fireCallback && gDeviceDisconnectedCallback) {
+        if (gDeviceDisconnectedCallback) {
             gDeviceDisconnectedCallback(identifier_.c_str());
         }
     }
@@ -430,34 +430,7 @@ static void internalSend(const string& identifier, const IBuffer& buffer)
         }
     }
 
-    writeCharacteristic = session->GetWriteCharacteristic();
-    if (writeCharacteristic == nullptr)
-    {
-        Log("No write characteritic found for {}\n", identifier);
-        return;
-    }
-
-    try
-    {
-        session->GetWriteCharacteristic().WriteValueAsync(buffer, GattWriteOption::WriteWithoutResponse).Completed(
-            [](auto&& ch, auto&& status)
-            {
-                Log("Wrote data with status of {}\n", (int)status);
-            });
-    }
-    catch (std::exception& e)
-    {
-        Log("Caught exception while writing! {}\n", e.what());
-    }
-    catch (winrt::hresult_error& e)
-    {
-        Log("Caught exception while writing! {}\n", to_string(e.message()));
-    }
-    catch (...)
-    {
-        auto e = std::current_exception();
-        Log("Caught exception while writing!\n");
-    }
+    session->Send(buffer);
 }
 
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier)
@@ -528,10 +501,12 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 void godice_stop_listening()
 {
     gWatcher.Stop();
+}
 
+void godice_reset() {
     gMapMutex.lock();
 
-    while (gDevicesInProgress.count() > 0)
+    while (gDevicesInProgress.size() > 0)
     {
         gMapMutex.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
