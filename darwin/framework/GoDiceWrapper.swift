@@ -87,3 +87,8 @@ func StartListening() -> Void {
 func StopListening() -> Void {
     btc.listening = false
 }
+
+@_cdecl("reset")
+func Reset() -> Void {
+    btc.reset()
+}
