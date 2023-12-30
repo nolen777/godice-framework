@@ -26,4 +26,6 @@ extern "C" {
 	__declspec(dllexport) void godice_connect(const char* identifier);
 	__declspec(dllexport) void godice_disconnect(const char* identifier);
 	__declspec(dllexport) void godice_send(const char* identifier, uint32_t data_size, uint8_t* data);
+	
+	__declspec(dllexport) void godice_reset();
 }
