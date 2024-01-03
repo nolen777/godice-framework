@@ -6,10 +6,10 @@
 #include <string>
 
 #include "../GoDiceDll/GoDiceDll.h"
-#include "../GoDiceDll/GoDiceDll.h"
 
 using std::cerr;
 using std::endl;
+using std::string;
 
 void DeviceFoundCallback(const char* identifier, const char* name);
 void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data);
@@ -23,12 +23,13 @@ void Log(const char* str);
 void RequestColor(const char* identifier);
 
 std::mutex connectedMutex;
-std::unordered_set<std::string> connectedDevices;
-std::unordered_set<std::string> connectingDevices;
+std::unordered_set<string> connectedDevices;
+std::unordered_set<string> connectingDevices;
+std::unordered_map<string, string> deviceNames;
 
 int main(int argc, char* argv[])
 {
-    cerr << "Hello, World!" << endl;
+    cerr << "Starting!" << endl;
     godice_set_logger(Log);
     godice_set_callbacks(
         DeviceFoundCallback,
@@ -50,6 +51,7 @@ void DeviceFoundCallback(const char* identifier, const char* name)
         if (connectedDevices.contains(identifier)) return;
         if (connectingDevices.contains(identifier)) return;
         connectingDevices.insert(identifier);
+        deviceNames[identifier] = name;
     }
     cerr << "Device found! " << identifier << " : " << name << endl;
     godice_connect(identifier);
@@ -57,13 +59,14 @@ void DeviceFoundCallback(const char* identifier, const char* name)
 
 void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data)
 {
-    cerr << "Received data! " << identifier << " : " << data_size << "b" << " : ";
-    for (auto i=0; i<data_size; i++)
+    string& name = deviceNames[identifier];
+    cerr << "  " << name <<  " Received data! " << data_size << "b" << " : ";
+    for (uint32_t i=0; i<data_size; i++)
     {
         cerr << std::dec << (int)data[i] << " ";
     }
     cerr << " : 0x";
-    for (auto i=0; i<data_size; i++)
+    for (uint32_t i=0; i<data_size; i++)
     {
         cerr << std::hex << (int)data[i];
     }
@@ -71,13 +74,14 @@ void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data)
     
     if (data_size > 3 && data[0] == 'C' && data[1] == 'o' && data[2] == 'l')
     {
-        cerr << "Received color " << (int)data[3] << endl;;
+        cerr <<  "  " << name <<  " Received color " << static_cast<int>(data[3]) << endl;;
     }
 }
 
 void DeviceConnectionFailedCallback(const char* identifier)
 {
-    cerr << "Device failed to connect! " << identifier << endl;
+    const string& name = deviceNames[identifier];
+    cerr <<  "  " << name << " Device failed to connect! " << identifier << endl;
     {
         std::scoped_lock lk(connectedMutex);
         connectingDevices.erase(identifier);
@@ -87,7 +91,8 @@ void DeviceConnectionFailedCallback(const char* identifier)
 
 void DeviceConnectedCallback(const char* identifier)
 {
-    cerr << "Device connected! " << identifier << endl;
+    const string& name = deviceNames[identifier];
+    cerr << "  " << name << " Device connected! " << identifier << endl;
 
     {
         std::scoped_lock lk(connectedMutex);
@@ -104,7 +109,8 @@ void DeviceConnectedCallback(const char* identifier)
 
 void DeviceDisconnectedCallback(const char* identifier)
 {
-    cerr << "Device disconnected! " << identifier << endl;
+    const string& name = deviceNames[identifier];
+    cerr << "  " << name << " Device disconnected! " << identifier << endl;
 
     {
         std::scoped_lock lk(connectedMutex);
@@ -117,7 +123,7 @@ void DeviceDisconnectedCallback(const char* identifier)
 
 void ListenerStoppedCallback(void)
 {
-    cerr << "Listener stopped!" << endl;
+    cerr << "  Listener stopped!" << endl;
 }
 
 void RequestColor(const char* identifier)

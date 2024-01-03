@@ -91,7 +91,10 @@ private:
     event_token notify_token_;
     event_token connection_status_changed_token_;
 
-    mutex connection_lock_;
+    mutex change_lock_;
+
+    bool connecting_ = false;
+    mutex connecting_lock_;
 
     void lockedDisconnect()
     {
@@ -111,9 +114,197 @@ private:
         if (device_ != nullptr)
         {
             device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
-        
-            device_.Close();
-            device_ = nullptr;
+            //
+            // device_.Close();
+            // device_ = nullptr;
+        }
+    }
+
+    static string GDSRErrorString(const GattDeviceServicesResult& result)
+    {
+        switch (result.Status())
+        {
+        case GattCommunicationStatus::Success:
+            return "success";
+        case GattCommunicationStatus::Unreachable:
+            return "unreachable";
+        case GattCommunicationStatus::ProtocolError:
+            return "protocol error: " + std::to_string(result.ProtocolError().Value());
+        case GattCommunicationStatus::AccessDenied:
+            return "access denied";
+        default:
+            return "unknown status";
+        }
+    }
+
+    static string GCRErrorString(const GattCharacteristicsResult& result)
+    {
+        switch (result.Status())
+        {
+        case GattCommunicationStatus::Success:
+            return "success";
+        case GattCommunicationStatus::Unreachable:
+            return "unreachable";
+        case GattCommunicationStatus::ProtocolError:
+            return "protocol error: " + std::to_string(result.ProtocolError().Value());
+        case GattCommunicationStatus::AccessDenied:
+            return "access denied";
+        default:
+            return "unknown status";
+        }
+    }
+
+    void NamedLog(const char* str)
+    {
+        Log(("[" + name_ + "] " + str).c_str());
+    }
+    
+    template <class Args>
+    void NamedLog(const char* str, Args&& args...)
+    {
+        auto prefixed = "[" + name_ + "] " + str;
+        auto formattedStr = std::vformat(prefixed, std::make_format_args(args));
+        Log(formattedStr.c_str());
+    }
+
+    bool lockedConnect()
+    {
+        try
+        {
+           // device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
+
+            NamedLog("Getting services\n");
+            const auto servicesResult = device_.GetGattServicesForUuidAsync(kServiceGuid, BluetoothCacheMode::Cached).get();
+            if (servicesResult.Status() != GattCommunicationStatus::Success)
+            {
+                auto errString = GDSRErrorString(servicesResult);
+                NamedLog("Failed to get services, error `{}`\n", errString);
+                
+                return false;
+            }
+            const auto services = servicesResult.Services();
+            if (services.Size() < 1)
+            {
+                NamedLog("Failed to get services\n");
+                
+                return false;
+            }
+            service_ = services.GetAt(0);
+
+            NamedLog("Requesting access\n");
+            if (service_.RequestAccessAsync().get() != DeviceAccessStatus::Allowed)
+            {
+                NamedLog("Failed to get access to service for {}\n", name_);
+                
+                return false;
+            }
+            
+            // device_.ConnectionParametersChanged([this](auto&& dev, auto&& args)
+            // {
+            //     Log("Connection parameters changed!\n");
+            // });
+            //
+            // device_.ConnectionPhyChanged([this](auto&& dev, auto&& args)
+            // {
+            //     Log("Connection PHY changed!\n");
+            // });
+            
+            NamedLog("Setting status changed handler\n");
+            connection_status_changed_token_ = device_.ConnectionStatusChanged([this](auto&& dev, auto&& args)
+            {
+                internalConnectionChangedHandler(dev, identifier_);
+            });
+
+            NamedLog("Getting notify characteristic\n");
+            const auto notifChsResponse = service_.GetCharacteristicsForUuidAsync(kNotifyGuid, BluetoothCacheMode::Cached).
+                                           get();
+            if (notifChsResponse.Status() != GattCommunicationStatus::Success)
+            {
+                auto errString = GCRErrorString(notifChsResponse);
+                NamedLog("Got a failure response from GetCharacteristicsForUuidAsync for notify characteristic with err `{}`\n", errString);
+                
+                return false;
+            }
+            auto notifChs = notifChsResponse.Characteristics();
+            if (notifChs.Size() < 1)
+            {
+                NamedLog("Did not find any notification characteristics\n");
+                
+                return false;
+            }
+            notify_characteristic_ = notifChs.GetAt(0);
+
+            if ((notify_characteristic_.CharacteristicProperties() & GattCharacteristicProperties::Notify) != GattCharacteristicProperties::Notify)
+            {
+                NamedLog("Did not find characteristic with expected Notify property\n");
+                
+                return false;
+            }
+
+            NamedLog("Writing configuration\n");
+            auto configResult = notify_characteristic_
+                                .WriteClientCharacteristicConfigurationDescriptorAsync(
+                                    GattClientCharacteristicConfigurationDescriptorValue::Notify)
+                                .get();
+            if (configResult != GattCommunicationStatus::Success)
+            {
+                NamedLog("Failed to get set notification config with result {}\n", int(configResult));
+    
+                return false;
+            }
+
+            NamedLog("Getting write characteristic\n");
+            const auto wrChsResult = service_.GetCharacteristicsForUuidAsync(kWriteGuid, BluetoothCacheMode::Cached).get();
+            if (wrChsResult.Status() != GattCommunicationStatus::Success)
+            {
+                auto errString = GCRErrorString(wrChsResult);
+                NamedLog("Got a failure response from GetCharacteristicsForUuidAsync for write characteristic with err `{}`\n", errString);
+
+                return false;
+            }
+            const auto wrChs = wrChsResult.Characteristics();
+            if (wrChs.Size() < 1)
+            {
+                NamedLog("Did not find any write characteristics\n");
+
+                return false;
+            }
+            write_characteristic_ = wrChs.GetAt(0);
+
+            if ((write_characteristic_.CharacteristicProperties() & GattCharacteristicProperties::Write) != GattCharacteristicProperties::Write)
+            {
+                NamedLog("Did not find characteristic with expected Write property\n");
+
+                return false;
+            }
+
+            NamedLog("Setting value changed handler\n");
+            notify_token_ = notify_characteristic_.ValueChanged([this](auto&& ch, auto&& args)
+            {
+                NotifyCharacteristicValueChanged(args);
+            });
+
+            return device_.ConnectionStatus() == BluetoothConnectionStatus::Connected;
+        }
+        catch (std::exception& e)
+        {
+            NamedLog("Caught exception while connecting {}\n", e.what());
+                
+            return false;
+        }
+        catch (winrt::hresult_error& e)
+        {
+            const auto code = e.code();
+            NamedLog("Caught exception code {} while connecting {}\n", e.code().value, to_string(e.message()));
+                
+            return false;
+        }
+        catch (...)
+        {
+            auto e = std::current_exception();
+            NamedLog("Caught exception while connecting\n");
+                
+            return false;
         }
     }
     
@@ -166,121 +357,61 @@ public:
 
     void Connect()
     {
-        try
+        {
+            scoped_lock connectionLock(connecting_lock_);
+            if (connecting_)
+            {
+                NamedLog("Already connecting\n");
+                return;
+            }
+            connecting_ = true;
+        }
+        
+        scoped_lock lk(change_lock_);
+        if (device_.ConnectionStatus() == BluetoothConnectionStatus::Disconnected && notify_characteristic_ != nullptr)
         {
             lockedDisconnect();
-
-            scoped_lock lk(connection_lock_);
-            device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
-
-            connection_status_changed_token_ = device_.ConnectionStatusChanged([this](auto&& dev, auto&& args)
-            {
-                internalConnectionChangedHandler(dev, identifier_);
-            });
-            
-            const auto servicesResult = device_.GetGattServicesForUuidAsync(kServiceGuid).get();
-            if (servicesResult.Status() != GattCommunicationStatus::Success)
-            {
-                Log("Failed to get services for {}\n", name_);
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-            const auto services = servicesResult.Services();
-            if (services.Size() < 1)
-            {
-                Log("Failed to get services for {}\n", name_);
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-            service_ = services.GetAt(0);
-
-            if (service_.RequestAccessAsync().get() != DeviceAccessStatus::Allowed)
-            {
-                Log("Failed to get access to service");
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-
-            const auto notifChsResponse = service_.GetCharacteristicsForUuidAsync(kNotifyGuid).
-                                           get();
-            if (notifChsResponse.Status() != GattCommunicationStatus::Success)
-            {
-                Log("Failed to get notify characteristic for {}\n", name_);
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-            auto notifChs = notifChsResponse.Characteristics();
-            if (notifChs.Size() < 1)
-            {
-                Log("Failed to get notify characteristic for {}\n", name_);
-                
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-            notify_characteristic_ = notifChs.GetAt(0);
-
-            auto configResult = notify_characteristic_
-                                .WriteClientCharacteristicConfigurationDescriptorAsync(
-                                    GattClientCharacteristicConfigurationDescriptorValue::Notify)
-                                .get();
-            if (configResult != GattCommunicationStatus::Success)
-            {
-                Log("Failed to get set notification config for {}\n", name_);
-                
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-
-            const auto wrChsResult = service_.GetCharacteristicsForUuidAsync(kWriteGuid).get();
-            if (wrChsResult.Status() != GattCommunicationStatus::Success)
-            {
-                Log("Failed to get write characteristic for {}\n", name_);
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-            const auto wrChs = wrChsResult.Characteristics();
-            if (wrChs.Size() < 1)
-            {
-                Log("Failed to get write characteristic for {}\n", name_);
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-                return;
-            }
-            write_characteristic_ = wrChs.GetAt(0);
-
-            notify_token_ = notify_characteristic_.ValueChanged([this](auto&& ch, auto&& args)
-            {
-                NotifyCharacteristicValueChanged(args);
-            });
         }
-        catch (std::exception& e)
+        
+        if (notify_characteristic_ == nullptr)
         {
-            Log("Caught exception while connecting {}\n", e.what());
-            gDeviceConnectionFailedCallback(identifier_.c_str());
+            if (lockedConnect())
+            {
+                if (gDeviceConnectedCallback)
+                {
+                    gDeviceConnectedCallback(identifier_.c_str());
+                }
+            }
+            else
+            {
+                lockedDisconnect();
+                if (gDeviceConnectionFailedCallback)
+                {
+                    gDeviceConnectionFailedCallback(identifier_.c_str());
+                }
+            }
         }
-        catch (winrt::hresult_error& e)
+        else
         {
-            Log("Caught exception while connecting {}\n", to_string(e.message()));
-            gDeviceConnectionFailedCallback(identifier_.c_str());
+            NamedLog("Already connected\n");
+            if (gDeviceConnectedCallback)
+            {
+                gDeviceConnectedCallback(identifier_.c_str());
+            }
         }
-        catch (...)
+        
         {
-            auto e = std::current_exception();
-            Log("Caught exception while connecting\n");
-            gDeviceConnectionFailedCallback(identifier_.c_str());
-        }
-
-        if (gDeviceConnectedCallback)
-        {
-            gDeviceConnectedCallback(identifier_.c_str());
+            scoped_lock connectionLock(connecting_lock_);
+            connecting_ = false;
         }
     }
 
     void Send(const IBuffer& msg)
     {
-        scoped_lock lk(connection_lock_);
+        scoped_lock lk(change_lock_);
         if (write_characteristic_ == nullptr)
         {
-            Log("No write characteristic found for {}\n", identifier_);
+            NamedLog("No write characteristic found for\n");
             return;
         }
 
@@ -289,27 +420,27 @@ public:
             auto status = write_characteristic_.WriteValueAsync(msg, GattWriteOption::WriteWithoutResponse).get();
             if (status != GattCommunicationStatus::Success)
             {
-                Log("Write data failed for {} with status {}\n", identifier_, (int)status);
+                NamedLog("Write data failed with status {}\n", (int)status);
             }
         }
         catch (std::exception& e)
         {
-            Log("Caught exception while writing! {}\n", e.what());
+            NamedLog("Caught exception while writing! {}\n", e.what());
         }
         catch (winrt::hresult_error& e)
         {
-            Log("Caught exception while writing! {}\n", to_string(e.message()));
+            NamedLog("Caught exception while writing! {}\n", to_string(e.message()));
         }
         catch (...)
         {
             auto e = std::current_exception();
-            Log("Caught exception while writing!\n");
+            NamedLog("Caught exception while writing!\n");
         }
     }
 
     void Disconnect()
     {
-        scoped_lock lk(connection_lock_);
+        scoped_lock lk(change_lock_);
         lockedDisconnect();
         if (gDeviceDisconnectedCallback) {
             gDeviceDisconnectedCallback(identifier_.c_str());
@@ -320,7 +451,11 @@ public:
 
     ~DeviceSession()
     {
-        Disconnect();
+        scoped_lock lk(change_lock_);
+        lockedDisconnect();
+
+        device_.Close();
+        device_ = nullptr;
     }
 };
 
@@ -379,6 +514,7 @@ void godice_start_listening()
 
 void godice_connect(const char* identifier)
 {
+    Log("Trying to connect to {}\n", identifier);
     string strIdent = identifier;
     std::thread([strIdent]()
     {
@@ -435,9 +571,11 @@ static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const
 {
     if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
     {
-        if (gDeviceDisconnectedCallback)
+        scoped_lock lk(gMapMutex);
+        const auto& session = gDevicesByIdentifier[identifier];
+        if (session != nullptr)
         {
-            gDeviceDisconnectedCallback(identifier.c_str());
+            session->Disconnect();
         }
     }
 }
@@ -448,7 +586,11 @@ static void internalConnect(const string& identifier)
     {
         scoped_lock lk(gMapMutex);
         session = gDevicesByIdentifier[identifier];
-        if (session == nullptr) return;
+        if (session == nullptr)
+        {
+            Log("No session for {}\n", identifier);
+            return;
+        }
     }
     session->Connect();
 }
@@ -502,6 +644,8 @@ void godice_stop_listening()
 }
 
 void godice_reset() {
+    gWatcher.Stop();
+    
     gMapMutex.lock();
 
     while (gDevicesInProgress.size() > 0)
@@ -510,11 +654,7 @@ void godice_reset() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         gMapMutex.lock();
     }
-
-    for (const auto& kv : gDevicesByIdentifier)
-    {
-        kv.second->Disconnect();
-    }
+    
     gDevicesByIdentifier.clear();
     
     gMapMutex.unlock();
