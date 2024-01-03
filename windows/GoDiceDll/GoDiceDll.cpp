@@ -166,28 +166,27 @@ private:
         Log(formattedStr.c_str());
     }
 
-    bool lockedConnect()
+    Windows::Foundation::IAsyncOperation<bool> lockedConnect()
     {
         try
         {
             connected_ = false;
-           // device_ = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddress_).get();
 
             NamedLog("Getting services\n");
-            const auto servicesResult = device_.GetGattServicesForUuidAsync(kServiceGuid, BluetoothCacheMode::Cached).get();
+            const auto servicesResult = co_await device_.GetGattServicesForUuidAsync(kServiceGuid, BluetoothCacheMode::Cached);
             if (servicesResult.Status() != GattCommunicationStatus::Success)
             {
                 auto errString = GDSRErrorString(servicesResult);
                 NamedLog("Failed to get services, error `{}`\n", errString);
                 
-                return false;
+                co_return false;
             }
             const auto services = servicesResult.Services();
             if (services.Size() < 1)
             {
                 NamedLog("Failed to get services\n");
                 
-                return false;
+                co_return false;
             }
             service_ = services.GetAt(0);
 
@@ -196,7 +195,7 @@ private:
             {
                 NamedLog("Failed to get access to service for {}\n", name_);
                 
-                return false;
+                co_return false;
             }
             
             NamedLog("Setting status changed handler\n");
@@ -206,21 +205,20 @@ private:
             });
 
             NamedLog("Getting notify characteristic\n");
-            const auto notifChsResponse = service_.GetCharacteristicsForUuidAsync(kNotifyGuid, BluetoothCacheMode::Cached).
-                                           get();
+            const auto notifChsResponse = co_await service_.GetCharacteristicsForUuidAsync(kNotifyGuid, BluetoothCacheMode::Cached);
             if (notifChsResponse.Status() != GattCommunicationStatus::Success)
             {
                 auto errString = GCRErrorString(notifChsResponse);
                 NamedLog("Got a failure response from GetCharacteristicsForUuidAsync for notify characteristic with err `{}`\n", errString);
                 
-                return false;
+                co_return false;
             }
             auto notifChs = notifChsResponse.Characteristics();
             if (notifChs.Size() < 1)
             {
                 NamedLog("Did not find any notification characteristics\n");
                 
-                return false;
+                co_return false;
             }
             notify_characteristic_ = notifChs.GetAt(0);
 
@@ -228,36 +226,35 @@ private:
             {
                 NamedLog("Did not find characteristic with expected Notify property\n");
                 
-                return false;
+                co_return false;
             }
 
             NamedLog("Writing configuration\n");
-            auto configResult = notify_characteristic_
+            auto configResult = co_await notify_characteristic_
                                 .WriteClientCharacteristicConfigurationDescriptorAsync(
-                                    GattClientCharacteristicConfigurationDescriptorValue::Notify)
-                                .get();
+                                    GattClientCharacteristicConfigurationDescriptorValue::Notify);
             if (configResult != GattCommunicationStatus::Success)
             {
                 NamedLog("Failed to get set notification config with result {}\n", int(configResult));
     
-                return false;
+                co_return false;
             }
 
             NamedLog("Getting write characteristic\n");
-            const auto wrChsResult = service_.GetCharacteristicsForUuidAsync(kWriteGuid, BluetoothCacheMode::Cached).get();
+            const auto wrChsResult = co_await service_.GetCharacteristicsForUuidAsync(kWriteGuid, BluetoothCacheMode::Cached);
             if (wrChsResult.Status() != GattCommunicationStatus::Success)
             {
                 auto errString = GCRErrorString(wrChsResult);
                 NamedLog("Got a failure response from GetCharacteristicsForUuidAsync for write characteristic with err `{}`\n", errString);
 
-                return false;
+                co_return false;
             }
             const auto wrChs = wrChsResult.Characteristics();
             if (wrChs.Size() < 1)
             {
                 NamedLog("Did not find any write characteristics\n");
 
-                return false;
+                co_return false;
             }
             write_characteristic_ = wrChs.GetAt(0);
 
@@ -265,7 +262,7 @@ private:
             {
                 NamedLog("Did not find characteristic with expected Write property\n");
 
-                return false;
+                co_return false;
             }
 
             NamedLog("Setting value changed handler\n");
@@ -275,27 +272,27 @@ private:
             });
 
             connected_ = device_.ConnectionStatus() == BluetoothConnectionStatus::Connected;
-            return connected_;
+            co_return connected_;
         }
         catch (std::exception& e)
         {
             NamedLog("Caught exception while connecting {}\n", e.what());
                 
-            return false;
+            co_return false;
         }
         catch (winrt::hresult_error& e)
         {
             const auto code = e.code();
             NamedLog("Caught exception code {} while connecting\n", e.code().value);
                 
-            return false;
+            co_return false;
         }
         catch (...)
         {
             auto e = std::current_exception();
             NamedLog("Caught exception while connecting\n");
                 
-            return false;
+            co_return false;
         }
     }
 
@@ -383,7 +380,7 @@ public:
         }
     }
 
-    void Connect()
+    fire_and_forget Connect()
     {
         bool fireConnected = false;
         
@@ -400,7 +397,8 @@ public:
         }
         else
         {
-            if (lockedConnect())
+            bool result = co_await lockedConnect();
+            if (result)
             {
                 fireConnected = true;
             }
