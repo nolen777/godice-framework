@@ -10,6 +10,8 @@
 #include <semaphore>
 #include <unordered_set>
 
+#include <pplawait.h>
+
 #pragma comment(lib, "windowsapp")
 
 // macro for file, see also https://stackoverflow.com/a/14421702
@@ -23,6 +25,9 @@ using namespace Windows::Devices::Bluetooth::GenericAttributeProfile;
 using namespace Windows::Devices::Enumeration;
 
 using namespace Windows::Storage::Streams;
+
+using Windows::Foundation::IAsyncOperation;
+using Windows::Foundation::IInspectable;
 
 static BluetoothLEAdvertisementWatcher gWatcher = nullptr;
 
@@ -48,7 +53,7 @@ using std::unique_lock;
 using std::unordered_map;
 using std::pmr::unordered_set;
 
-static mutex gMapMutex;
+static binary_semaphore gMapSema = binary_semaphore(1);
 static unordered_map<string, shared_ptr<DeviceSession>> gDevicesByIdentifier;
 static unordered_set<string> gDevicesInProgress;
 
@@ -76,8 +81,10 @@ static void Log(const char* str, Args&& args...)
 
 static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watcher,
                                      const BluetoothLEAdvertisementReceivedEventArgs& args);
-static void internalConnect(const string& identifier);
-static void internalSend(const string& identifier, const IBuffer& buffer);
+
+static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(uint64_t btAddr);
+static IAsyncOperation<bool> internalConnect(const string& identifier);
+static fire_and_forget internalSend(const string& identifier, const IBuffer& buffer);
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier);
 
 struct DeviceSession
@@ -166,7 +173,7 @@ private:
         Log(formattedStr.c_str());
     }
 
-    Windows::Foundation::IAsyncOperation<bool> lockedConnect()
+    IAsyncOperation<bool> lockedConnect()
     {
         try
         {
@@ -191,7 +198,8 @@ private:
             service_ = services.GetAt(0);
 
             NamedLog("Requesting access\n");
-            if (service_.RequestAccessAsync().get() != DeviceAccessStatus::Allowed)
+            const auto accessStatus = co_await service_.RequestAccessAsync();
+            if (accessStatus != DeviceAccessStatus::Allowed)
             {
                 NamedLog("Failed to get access to service for {}\n", name_);
                 
@@ -296,26 +304,27 @@ private:
         }
     }
 
-    void lockedSend(const IBuffer& msg)
+    fire_and_forget lockedSend(const IBuffer& msg)
     {
         if (!connected_)
         {
             NamedLog("Attempting to write while not connected");
-            return;
+            co_return;
         }
         
         if (write_characteristic_ == nullptr)
         {
             NamedLog("No write characteristic found for\n");
-            return;
+            co_return;
         }
 
         try
         {
-            auto status = write_characteristic_.WriteValueAsync(msg, GattWriteOption::WriteWithoutResponse).get();
+            auto status = co_await write_characteristic_.WriteValueAsync(msg, GattWriteOption::WriteWithoutResponse);
             if (status != GattCommunicationStatus::Success)
             {
                 NamedLog("Write data failed with status {}\n", (int)status);
+                co_return;
             }
         }
         catch (std::exception& e)
@@ -331,33 +340,38 @@ private:
             auto e = std::current_exception();
             NamedLog("Caught exception while writing!\n");
         }
+
+        co_return;
     }
     
 public:
-    static shared_ptr<DeviceSession> MakeSession(uint64_t bluetoothAddr)
+    static Concurrency::task<shared_ptr<DeviceSession>> MakeSession(uint64_t bluetoothAddr)
     {
-        try
+        return Concurrency::create_task([bluetoothAddr]
         {
-            auto device = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddr).get();
+            try
+            {
+                auto device = BluetoothLEDevice::FromBluetoothAddressAsync(bluetoothAddr).get();
 
-            return std::make_shared<DeviceSession>(device, bluetoothAddr, nullptr, nullptr,
-                                                   nullptr);
-        }
-        catch (std::exception& e)
-        {
-            Log("Caught exception while creating session {}\n", e.what());
-        }
-        catch (winrt::hresult_error& e)
-        {
-            Log("Caught exception while creating session {}\n", to_string(e.message()));
-        }
-        catch (...)
-        {
-            auto e = std::current_exception();
-            Log("Caught exception while creating new session\n");
-        }
+                return std::make_shared<DeviceSession>(device, bluetoothAddr, nullptr, nullptr,
+                                                       nullptr);
+            }
+            catch (std::exception& e)
+            {
+                Log("Caught exception while creating session {}\n", e.what());
+            }
+            catch (winrt::hresult_error& e)
+            {
+                Log("Caught exception while creating session {}\n", to_string(e.message()));
+            }
+            catch (...)
+            {
+                auto e = std::current_exception();
+                Log("Caught exception while creating new session\n");
+            }
 
-        return nullptr;
+            return shared_ptr<DeviceSession>(nullptr);
+        });
     }
 
     DeviceSession(
@@ -380,9 +394,9 @@ public:
         }
     }
 
-    fire_and_forget Connect()
+    IAsyncOperation<bool> Connect()
     {
-        bool fireConnected = false;
+        bool success = false;
         
         use_sema_.acquire();
         if (device_.ConnectionStatus() == BluetoothConnectionStatus::Disconnected && notify_characteristic_ != nullptr)
@@ -393,14 +407,14 @@ public:
         if (connected_)
         {
             NamedLog("Already connected\n");
-            fireConnected = true;
+            success = true;
         }
         else
         {
             bool result = co_await lockedConnect();
             if (result)
             {
-                fireConnected = true;
+                success = true;
             }
             else
             {
@@ -409,12 +423,13 @@ public:
         }
         use_sema_.release();
 
-        if (fireConnected)
+        if (success)
         {
             if (gDeviceConnectedCallback)
             {
                 gDeviceConnectedCallback(identifier_.c_str());
             }
+            co_return true;
         }
         else
         {
@@ -422,6 +437,7 @@ public:
             {
                 gDeviceConnectionFailedCallback(identifier_.c_str());
             }
+            co_return false;
         }
     }
 
@@ -502,11 +518,12 @@ void godice_start_listening()
 
     if (gDeviceFoundCallback)
     {
-        scoped_lock lk(gMapMutex);
+        gMapSema.acquire();
         for (const auto& kv : gDevicesByIdentifier)
         {
             gDeviceFoundCallback(kv.first.c_str(), kv.second->DeviceName().c_str());
         }
+        gMapSema.release();
     }
 
     gWatcher.Start();
@@ -516,21 +533,18 @@ void godice_connect(const char* identifier)
 {
     Log("Trying to connect to {}\n", identifier);
     string strIdent = identifier;
-    std::thread([strIdent]()
-    {
-        internalConnect(strIdent);
-    }).detach();
+    internalConnect(strIdent);
 }
 
 void godice_disconnect(const char* identifier)
 {
     shared_ptr<DeviceSession> session = nullptr;
 
-    {
-        scoped_lock lk(gMapMutex);
-        session = gDevicesByIdentifier[identifier];
-        if (session == nullptr) return;
-    }
+    gMapSema.acquire();
+    session = gDevicesByIdentifier[identifier];
+    gMapSema.release();
+    
+    if (session == nullptr) return;
 
     std::thread([session]
     {
@@ -546,37 +560,36 @@ void godice_send(const char* id, uint32_t data_size, uint8_t* data)
     writer.WriteBytes(winrt::array_view(data, data + data_size));
 
     const IBuffer buf = writer.DetachBuffer();
-
-    std::thread([buf, identifier]()
-    {
-        internalSend(identifier, buf);
-    }).detach();
+    
+    internalSend(identifier, buf);
 }
 
-static void internalSend(const string& identifier, const IBuffer& buffer)
+static fire_and_forget internalSend(const string& identifier, const IBuffer& buffer)
 {
     shared_ptr<DeviceSession> session;
     GattCharacteristic writeCharacteristic = nullptr;
-
+    gMapSema.acquire();
+    session = gDevicesByIdentifier[identifier];
+    if (session == nullptr)
     {
-        scoped_lock lk(gMapMutex);
-        session = gDevicesByIdentifier[identifier];
-        if (session == nullptr)
-        {
-            Log("No session found for {}\n", identifier);
-            return;
-        }
+        Log("No session found for {}\n", identifier);
     }
-
-    session->Send(buffer);
+    else
+    {
+        co_return session->Send(buffer);
+    }
+    gMapSema.release();
+    co_return;
 }
 
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier)
 {
     if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
     {
-        scoped_lock lk(gMapMutex);
+        gMapSema.acquire();
         const auto& session = gDevicesByIdentifier[identifier];
+        gMapSema.release();
+        
         if (session != nullptr)
         {
             session->Disconnect();
@@ -584,19 +597,25 @@ static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const
     }
 }
 
-static void internalConnect(const string& identifier)
+static IAsyncOperation<bool> internalConnect(const string& identifier)
 {
     shared_ptr<DeviceSession> session;
+    bool returnValue = false;
+    
+    gMapSema.acquire();
+    session = gDevicesByIdentifier[identifier];
+    if (session == nullptr)
     {
-        scoped_lock lk(gMapMutex);
-        session = gDevicesByIdentifier[identifier];
-        if (session == nullptr)
-        {
-            Log("No session for {}\n", identifier);
-            return;
-        }
+        Log("No session for {}\n", identifier);
+        returnValue = false;
     }
-    session->Connect();
+    else
+    {
+        returnValue = co_await session->Connect();
+    }
+    gMapSema.release();
+    
+    co_return returnValue;
 }
 
 static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watcher,
@@ -604,42 +623,51 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 {
     uint64_t btAddr = args.BluetoothAddress();
     string identifier = std::to_string(btAddr);
+    internalReceivedDeviceFoundEvent(btAddr);
+}
 
-    std::scoped_lock lock(gMapMutex);
-    if (gDevicesInProgress.contains(identifier)) return;
-    if (gDevicesByIdentifier.count(identifier) == 0)
+static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(const uint64_t inBtAddr) {
+    auto btAddr = inBtAddr;
+    auto identifier =  std::to_string(btAddr);;
+    
+    shared_ptr<DeviceSession> session = nullptr;
+    
+    gMapSema.acquire();
+    if (gDevicesInProgress.contains(identifier))
+    {
+        gMapSema.release();
+        co_return true;
+    }
+    if (!gDevicesByIdentifier.contains(identifier))
     {
         gDevicesInProgress.insert(identifier);
-        std::thread([identifier, btAddr]
+
+        gMapSema.release();
+        session = co_await DeviceSession::MakeSession(btAddr);
+        gMapSema.acquire();
+        
+        if (session == nullptr)
         {
-            auto newSession = DeviceSession::MakeSession(btAddr);
-            if (newSession == nullptr)
-            {
-                Log("Failed to create new session\n");
-                return;
-            }
-
-            {
-                std::scoped_lock lock(gMapMutex);
-                gDevicesByIdentifier.emplace(std::make_pair(identifier, newSession));
-                gDevicesInProgress.erase(identifier);
-
-                if (gDeviceFoundCallback)
-                {
-                    gDeviceFoundCallback(identifier.c_str(), newSession->DeviceName().c_str());
-                }
-            }
-        }).detach();
+            Log("Failed to create new session\n");
+        }
+        else
+        {
+            gDevicesByIdentifier.emplace(std::make_pair(identifier, session));
+            gDevicesInProgress.erase(identifier);
+        }
     }
     else
     {
-        if (gDeviceFoundCallback)
-        {
-            const auto& session = gDevicesByIdentifier[identifier];
-            gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
-        }
-        return;
+        session = gDevicesByIdentifier[identifier];
     }
+
+    gMapSema.release();
+
+    if (session && gDeviceFoundCallback)
+    {
+        gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
+    }
+    co_return session != nullptr;
 }
 
 void godice_stop_listening()
@@ -650,16 +678,16 @@ void godice_stop_listening()
 void godice_reset() {
     gWatcher.Stop();
     
-    gMapMutex.lock();
+    gMapSema.acquire();
 
     while (gDevicesInProgress.size() > 0)
     {
-        gMapMutex.unlock();
+        gMapSema.release();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        gMapMutex.lock();
+        gMapSema.acquire();
     }
     
     gDevicesByIdentifier.clear();
     
-    gMapMutex.unlock();
+    gMapSema.release();
 }
