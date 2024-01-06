@@ -12,6 +12,8 @@
 
 #include <pplawait.h>
 
+#include "WorkQueue.h"
+
 #pragma comment(lib, "windowsapp")
 
 // macro for file, see also https://stackoverflow.com/a/14421702
@@ -43,15 +45,22 @@ static GDLogger gLogger = nullptr;
 
 using std::binary_semaphore;
 using std::condition_variable;
+using std::counting_semaphore;
 using std::exception;
+using std::function;
 using std::shared_future;
 using std::mutex;
+using std::queue;
 using std::scoped_lock;
 using std::shared_ptr;
 using std::string;
 using std::unique_lock;
 using std::unordered_map;
 using std::pmr::unordered_set;
+
+static void Log(const char* str);
+static WorkQueue gBluetoothQueue;
+static WorkQueue gCallbackQueue;
 
 static binary_semaphore gMapSema = binary_semaphore(1);
 static unordered_map<string, shared_ptr<DeviceSession>> gDevicesByIdentifier;
@@ -84,7 +93,7 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 
 static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(uint64_t btAddr);
 static IAsyncOperation<bool> internalConnect(const string& identifier);
-static fire_and_forget internalSend(const string& identifier, const IBuffer& buffer);
+static IAsyncOperation<bool> internalSend(const string& identifier, const IBuffer& buffer);
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier);
 
 struct DeviceSession
@@ -100,7 +109,7 @@ private:
     event_token notify_token_;
     event_token connection_status_changed_token_;
 
-    binary_semaphore use_sema_;
+    static inline binary_semaphore use_sema_ = binary_semaphore(1);
     bool connected_ = false;
 
     void lockedDisconnect()
@@ -304,18 +313,18 @@ private:
         }
     }
 
-    fire_and_forget lockedSend(const IBuffer& msg)
+    IAsyncOperation<bool> lockedSend(const IBuffer& msg)
     {
         if (!connected_)
         {
             NamedLog("Attempting to write while not connected");
-            co_return;
+            co_return false;
         }
         
         if (write_characteristic_ == nullptr)
         {
             NamedLog("No write characteristic found for\n");
-            co_return;
+            co_return false;
         }
 
         try
@@ -324,8 +333,10 @@ private:
             if (status != GattCommunicationStatus::Success)
             {
                 NamedLog("Write data failed with status {}\n", (int)status);
-                co_return;
+                co_return false;
             }
+
+            co_return true;
         }
         catch (std::exception& e)
         {
@@ -341,7 +352,7 @@ private:
             NamedLog("Caught exception while writing!\n");
         }
 
-        co_return;
+        co_return false;
     }
     
 public:
@@ -381,7 +392,7 @@ public:
         const GattCharacteristic& notifyCh,
         const GattCharacteristic& writeCh
     ) : device_(dev), bluetoothAddress_(btAddr), identifier_(std::to_string(btAddr)), name_(to_string(dev.Name())), service_(service),
-        notify_characteristic_(notifyCh), write_characteristic_(writeCh), use_sema_(1)
+        notify_characteristic_(notifyCh), write_characteristic_(writeCh)
     {
     }
 
@@ -390,7 +401,11 @@ public:
         if (gDataReceivedCallback != nullptr)
         {
             const IBuffer& data = args.CharacteristicValue();
-            gDataReceivedCallback(identifier_.c_str(), data.Length(), data.data());
+            const string ident = this->identifier_;
+            gCallbackQueue.Enqueue([data, ident]
+            {
+                gDataReceivedCallback(ident.c_str(), data.Length(), data.data());
+            });
         }
     }
 
@@ -423,31 +438,18 @@ public:
         }
         use_sema_.release();
 
-        if (success)
-        {
-            if (gDeviceConnectedCallback)
-            {
-                gDeviceConnectedCallback(identifier_.c_str());
-            }
-            co_return true;
-        }
-        else
-        {
-            if (gDeviceConnectionFailedCallback)
-            {
-                gDeviceConnectionFailedCallback(identifier_.c_str());
-            }
-            co_return false;
-        }
+        co_return success;
     }
 
-    void Send(const IBuffer& msg)
+    IAsyncOperation<bool> Send(const IBuffer& msg)
     {
         use_sema_.acquire();
         NamedLog("Attempting to write {} bytes\n", msg.Length());
-        lockedSend(msg);
+        auto result = co_await lockedSend(msg);
 
         use_sema_.release();
+
+        co_return result;
     }
 
     void Disconnect()
@@ -455,10 +457,14 @@ public:
         use_sema_.acquire();
         lockedDisconnect();
         use_sema_.release();
-        
-        if (gDeviceDisconnectedCallback) {
-            gDeviceDisconnectedCallback(identifier_.c_str());
-        }
+
+        const string ident = identifier_;
+        gCallbackQueue.Enqueue([ident]
+        {
+            if (gDeviceDisconnectedCallback) {
+                    gDeviceDisconnectedCallback(ident.c_str());
+                }
+        });
     }
 
     const string& DeviceName() const { return name_; }
@@ -483,73 +489,96 @@ void godice_set_callbacks(
     GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
     GDListenerStoppedCallbackFunction listenerStoppedCallback)
 {
-    gDeviceFoundCallback = deviceFoundCallback;
-    gDataReceivedCallback = dataReceivedCallback;
-    gDeviceConnectedCallback = deviceConnectedCallback;
-    gDeviceConnectionFailedCallback = deviceConnectionFailedCallback;
-    gDeviceDisconnectedCallback = deviceDisconnectedCallback;
-    gListenerStoppedCallback = listenerStoppedCallback;
+    gBluetoothQueue.Enqueue([=]
+    {
+        gDeviceFoundCallback = deviceFoundCallback;
+        gDataReceivedCallback = dataReceivedCallback;
+        gDeviceConnectedCallback = deviceConnectedCallback;
+        gDeviceConnectionFailedCallback = deviceConnectionFailedCallback;
+        gDeviceDisconnectedCallback = deviceDisconnectedCallback;
+        gListenerStoppedCallback = listenerStoppedCallback;
+    });
 }
 
 void godice_set_logger(GDLogger logger)
 {
-    gLogger = logger;
+    gBluetoothQueue.Enqueue([logger]
+    {
+        gLogger = logger;
+    });
 }
 
 void godice_start_listening()
 {
-    if (gWatcher == nullptr)
+    gBluetoothQueue.Enqueue([]
     {
-        gWatcher = BluetoothLEAdvertisementWatcher();
-    }
-    gWatcher.ScanningMode(BluetoothLEScanningMode::Active);
-    gWatcher.AdvertisementFilter().Advertisement().ServiceUuids().Append(kServiceGuid);
-
-    auto result = gWatcher.Received(ReceivedDeviceFoundEvent);
-
-    gWatcher.Stopped([=](auto&&, auto&&)
-    {
-        Log("Watcher Stopped\n");
-        if (gListenerStoppedCallback)
+        if (gWatcher == nullptr)
         {
-            gListenerStoppedCallback();
+            gWatcher = BluetoothLEAdvertisementWatcher();
         }
+        gWatcher.ScanningMode(BluetoothLEScanningMode::Active);
+        gWatcher.AdvertisementFilter().Advertisement().ServiceUuids().Append(kServiceGuid);
+
+        auto result = gWatcher.Received(ReceivedDeviceFoundEvent);
+
+        gWatcher.Stopped([=](auto&&, auto&&)
+        {
+            Log("Watcher Stopped\n");
+
+            gCallbackQueue.Enqueue([]
+            {
+                if (gListenerStoppedCallback)
+                {
+                    gListenerStoppedCallback();
+                }
+            });
+        });
+
+        if (gDeviceFoundCallback)
+        {
+            // Make a copy of sessions inside the lock
+            gMapSema.acquire();
+            unordered_map<string, shared_ptr<DeviceSession>> sessions = gDevicesByIdentifier;
+            gMapSema.release();
+
+            gCallbackQueue.Enqueue([sessions]
+            {
+                for (const auto& kv : sessions)
+                {
+                    gDeviceFoundCallback(kv.first.c_str(), kv.second->DeviceName().c_str());
+                }
+            });
+        }
+
+        gWatcher.Start();
     });
+}
 
-    if (gDeviceFoundCallback)
+void godice_connect(const char* inIdent)
+{
+    string identifier = inIdent;
+    gBluetoothQueue.Enqueue([identifier]
     {
+        Log("Trying to connect to {}\n", identifier);
+        internalConnect(identifier);
+    });
+}
+
+void godice_disconnect(const char* inIdent)
+{
+    string identifier = inIdent;
+    gBluetoothQueue.Enqueue([identifier]
+    {
+        shared_ptr<DeviceSession> session = nullptr;
+
         gMapSema.acquire();
-        for (const auto& kv : gDevicesByIdentifier)
-        {
-            gDeviceFoundCallback(kv.first.c_str(), kv.second->DeviceName().c_str());
-        }
+        session = gDevicesByIdentifier[identifier];
         gMapSema.release();
-    }
-
-    gWatcher.Start();
-}
-
-void godice_connect(const char* identifier)
-{
-    Log("Trying to connect to {}\n", identifier);
-    string strIdent = identifier;
-    internalConnect(strIdent);
-}
-
-void godice_disconnect(const char* identifier)
-{
-    shared_ptr<DeviceSession> session = nullptr;
-
-    gMapSema.acquire();
-    session = gDevicesByIdentifier[identifier];
-    gMapSema.release();
     
-    if (session == nullptr) return;
-
-    std::thread([session]
-    {
+        if (session == nullptr) return;
+        
         session->Disconnect();
-    }).detach();
+    });
 }
 
 void godice_send(const char* id, uint32_t data_size, uint8_t* data)
@@ -561,61 +590,83 @@ void godice_send(const char* id, uint32_t data_size, uint8_t* data)
 
     const IBuffer buf = writer.DetachBuffer();
     
-    internalSend(identifier, buf);
+    gBluetoothQueue.Enqueue([identifier, buf]
+    {
+        bool success = internalSend(identifier, buf).get();
+    });
 }
 
-static fire_and_forget internalSend(const string& identifier, const IBuffer& buffer)
+static IAsyncOperation<bool> internalSend(const string& identifier, const IBuffer& buffer)
 {
-    shared_ptr<DeviceSession> session;
-    GattCharacteristic writeCharacteristic = nullptr;
     gMapSema.acquire();
-    session = gDevicesByIdentifier[identifier];
+    const shared_ptr<DeviceSession> session = gDevicesByIdentifier[identifier];
+    gMapSema.release();
+
     if (session == nullptr)
     {
         Log("No session found for {}\n", identifier);
     }
     else
     {
-        co_return session->Send(buffer);
+        co_return co_await session->Send(buffer);
     }
-    gMapSema.release();
-    co_return;
+    co_return false;
 }
 
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier)
 {
-    if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
+    gBluetoothQueue.Enqueue([dev, identifier]
     {
-        gMapSema.acquire();
-        const auto& session = gDevicesByIdentifier[identifier];
-        gMapSema.release();
-        
-        if (session != nullptr)
+        if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
         {
-            session->Disconnect();
+            gMapSema.acquire();
+            const auto& session = gDevicesByIdentifier[identifier];
+            gMapSema.release();
+        
+            if (session != nullptr)
+            {
+                session->Disconnect();
+            }
         }
-    }
+    });
 }
 
-static IAsyncOperation<bool> internalConnect(const string& identifier)
+static IAsyncOperation<bool> internalConnect(const string& inIdent)
 {
+    string identifier = inIdent;
     shared_ptr<DeviceSession> session;
-    bool returnValue = false;
+    bool success = false;
     
     gMapSema.acquire();
     session = gDevicesByIdentifier[identifier];
+    gMapSema.release();
+    
     if (session == nullptr)
     {
         Log("No session for {}\n", identifier);
-        returnValue = false;
+        success = false;
     }
     else
     {
-        returnValue = co_await session->Connect();
+        success = co_await session->Connect();
     }
-    gMapSema.release();
     
-    co_return returnValue;
+    if (success && gDeviceConnectedCallback)
+    {
+        gCallbackQueue.Enqueue([identifier]
+        {
+            gDeviceConnectedCallback(identifier.c_str());
+        });
+    }
+    if (!success && gDeviceConnectionFailedCallback)
+    {
+        gCallbackQueue.Enqueue([identifier]
+        {
+            gDeviceConnectionFailedCallback(identifier.c_str());
+        });
+    }
+    
+    co_return success;
 }
 
 static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watcher,
@@ -628,23 +679,27 @@ static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watc
 
 static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(const uint64_t inBtAddr) {
     auto btAddr = inBtAddr;
+    //
     auto identifier =  std::to_string(btAddr);;
     
     shared_ptr<DeviceSession> session = nullptr;
-    
+
+    bool needsNewSession = true;
     gMapSema.acquire();
     if (gDevicesInProgress.contains(identifier))
     {
-        gMapSema.release();
-        co_return true;
-    }
-    if (!gDevicesByIdentifier.contains(identifier))
-    {
+        needsNewSession = false;
         gDevicesInProgress.insert(identifier);
+    }
+    else if (gDevicesByIdentifier.contains(identifier))
+    {
+        needsNewSession = false;
+    }
+    gMapSema.release();
 
-        gMapSema.release();
+    if (needsNewSession)
+    {
         session = co_await DeviceSession::MakeSession(btAddr);
-        gMapSema.acquire();
         
         if (session == nullptr)
         {
@@ -652,42 +707,55 @@ static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(const uint64_t inB
         }
         else
         {
+            gMapSema.acquire();
             gDevicesByIdentifier.emplace(std::make_pair(identifier, session));
             gDevicesInProgress.erase(identifier);
+            gMapSema.release();
         }
     }
     else
     {
+        gMapSema.acquire();
         session = gDevicesByIdentifier[identifier];
+        gMapSema.release();
     }
-
-    gMapSema.release();
 
     if (session && gDeviceFoundCallback)
     {
-        gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
+        gCallbackQueue.Enqueue([identifier, session]
+        {
+            gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
+        });
     }
     co_return session != nullptr;
 }
 
 void godice_stop_listening()
 {
-    gWatcher.Stop();
-}
-
-void godice_reset() {
-    gWatcher.Stop();
-    
-    gMapSema.acquire();
-
-    while (gDevicesInProgress.size() > 0)
+    gBluetoothQueue.Enqueue([]
     {
-        gMapSema.release();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        gMapSema.acquire();
-    }
-    
-    gDevicesByIdentifier.clear();
-    
-    gMapSema.release();
+        gWatcher.Stop();
+    });
 }
+
+void godice_reset()
+{
+    gBluetoothQueue.Enqueue([]
+    {
+        gWatcher.Stop();
+    
+        gMapSema.acquire();
+
+        while (gDevicesInProgress.size() > 0)
+        {
+            gMapSema.release();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            gMapSema.acquire();
+        }
+    
+        gDevicesByIdentifier.clear();
+    
+        gMapSema.release();
+    });
+}
+
