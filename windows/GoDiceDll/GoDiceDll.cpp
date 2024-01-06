@@ -96,7 +96,7 @@ static IAsyncOperation<bool> internalConnect(const string& identifier);
 static IAsyncOperation<bool> internalSend(const string& identifier, const IBuffer& buffer);
 static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier);
 
-struct DeviceSession
+class DeviceSession : std::enable_shared_from_this<DeviceSession>
 {
 private:
     BluetoothLEDevice device_;
@@ -112,27 +112,36 @@ private:
     static inline binary_semaphore use_sema_ = binary_semaphore(1);
     bool connected_ = false;
 
-    void lockedDisconnect()
+    IAsyncOperation<bool> lockedDisconnect()
     {
-        if (notify_characteristic_ != nullptr)
-        {
-            notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
-            notify_characteristic_.ValueChanged(std::exchange(notify_token_, {}));
-            notify_characteristic_ = nullptr;
-        }
-        write_characteristic_ = nullptr;
+            if (notify_characteristic_ != nullptr)
+            {
+                try
+                {
+                    co_await notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
+                    notify_characteristic_.ValueChanged(std::exchange(notify_token_, {}));
+                }
+                catch (winrt::hresult_error& e)
+                {
+                    NamedLog("Failed to disconnect notify characteristic\n");
+                }
+                notify_characteristic_ = nullptr;
+            }
+            write_characteristic_ = nullptr;
         
-        if (service_ != nullptr)
-        {
-            service_.Close();
-            service_ = nullptr;
-        }
-        if (device_ != nullptr)
-        {
-            device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
-        }
+            if (service_ != nullptr)
+            {
+                service_.Close();
+                service_ = nullptr;
+            }
+            if (device_ != nullptr)
+            {
+                device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
+            }
 
-        connected_ = false;
+            connected_ = false;
+
+            co_return true;
     }
 
     static string GDSRErrorString(const GattDeviceServicesResult& result)
@@ -289,6 +298,8 @@ private:
             });
 
             connected_ = device_.ConnectionStatus() == BluetoothConnectionStatus::Connected;
+
+            NamedLog("Connection status is {}\n", connected_);
             co_return connected_;
         }
         catch (std::exception& e)
@@ -452,19 +463,29 @@ public:
         co_return result;
     }
 
-    void Disconnect()
+    IAsyncOperation<bool> Disconnect()
     {
-        use_sema_.acquire();
-        lockedDisconnect();
-        use_sema_.release();
-
-        const string ident = identifier_;
-        gCallbackQueue.Enqueue([ident]
+        try
         {
-            if (gDeviceDisconnectedCallback) {
+            use_sema_.acquire();
+            auto result = co_await lockedDisconnect();
+            use_sema_.release();
+
+            const string ident = identifier_;
+            gCallbackQueue.Enqueue([ident]
+            {
+                if (gDeviceDisconnectedCallback) {
                     gDeviceDisconnectedCallback(ident.c_str());
                 }
-        });
+            });
+
+            co_return result;
+        }
+        catch (winrt::hresult_error& e)
+        {
+            NamedLog("Caught exception while disconnecting {}\n", e.code().value);
+            co_return false;
+        }
     }
 
     const string& DeviceName() const { return name_; }
@@ -560,7 +581,8 @@ void godice_connect(const char* inIdent)
     gBluetoothQueue.Enqueue([identifier]
     {
         Log("Trying to connect to {}\n", identifier);
-        internalConnect(identifier);
+        bool result = internalConnect(identifier).get();
+        Log("Result was {}\n", result);
     });
 }
 
@@ -577,7 +599,7 @@ void godice_disconnect(const char* inIdent)
     
         if (session == nullptr) return;
         
-        session->Disconnect();
+        bool result = session->Disconnect().get();
     });
 }
 
@@ -625,7 +647,7 @@ static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const
         
             if (session != nullptr)
             {
-                session->Disconnect();
+                session->Disconnect().get();
             }
         }
     });

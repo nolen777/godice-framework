@@ -15,11 +15,11 @@ private:
     std::thread runnerThread_;
 
     std::queue<WorkItem> workQueue_;
-    std::binary_semaphore workQueueSemaphore_;
-    std::mutex workQueueMutex_;
+    std::mutex mutex_;
+    std::condition_variable condition_;
     
 public:
-    WorkQueue() : runnerThread_(&WorkQueue::Runner, this), workQueueSemaphore_(0) {}
+    WorkQueue() : runnerThread_(&WorkQueue::Runner, this) {}
 
     void Enqueue(const WorkItem& item);
 };
