@@ -33,7 +33,7 @@ using Windows::Foundation::IInspectable;
 
 static BluetoothLEAdvertisementWatcher gWatcher = nullptr;
 
-struct DeviceSession;
+class DeviceSession;
 
 static GDDeviceFoundCallbackFunction gDeviceFoundCallback = nullptr;
 static GDDataCallbackFunction gDataReceivedCallback = nullptr;
@@ -114,34 +114,35 @@ private:
 
     IAsyncOperation<bool> lockedDisconnect()
     {
-            if (notify_characteristic_ != nullptr)
+        NamedLog("Attempting to disconnect\n");
+        if (notify_characteristic_ != nullptr)
+        {
+            try
             {
-                try
-                {
-                    co_await notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
-                    notify_characteristic_.ValueChanged(std::exchange(notify_token_, {}));
-                }
-                catch (winrt::hresult_error& e)
-                {
-                    NamedLog("Failed to disconnect notify characteristic\n");
-                }
-                notify_characteristic_ = nullptr;
+                co_await notify_characteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
+                notify_characteristic_.ValueChanged(std::exchange(notify_token_, {}));
             }
-            write_characteristic_ = nullptr;
-        
-            if (service_ != nullptr)
+            catch (winrt::hresult_error& e)
             {
-                service_.Close();
-                service_ = nullptr;
+                NamedLog("Failed to disconnect notify characteristic {}\n", e.code().value);
             }
-            if (device_ != nullptr)
-            {
-                device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
-            }
+            notify_characteristic_ = nullptr;
+        }
+        write_characteristic_ = nullptr;
+    
+        if (service_ != nullptr)
+        {
+            service_.Close();
+            service_ = nullptr;
+        }
+        if (device_ != nullptr)
+        {
+            device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
+        }
 
-            connected_ = false;
+        connected_ = false;
 
-            co_return true;
+        co_return true;
     }
 
     static string GDSRErrorString(const GattDeviceServicesResult& result)
@@ -427,7 +428,7 @@ public:
         use_sema_.acquire();
         if (device_.ConnectionStatus() == BluetoothConnectionStatus::Disconnected && notify_characteristic_ != nullptr)
         {
-            lockedDisconnect();
+            co_await lockedDisconnect();
         }
         
         if (connected_)
@@ -444,7 +445,7 @@ public:
             }
             else
             {
-                lockedDisconnect();
+                co_await lockedDisconnect();
             }
         }
         use_sema_.release();
@@ -641,6 +642,7 @@ static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const
     {
         if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
         {
+            Log("Got a disconnection event for {}\n", identifier);
             gMapSema.acquire();
             const auto& session = gDevicesByIdentifier[identifier];
             gMapSema.release();
