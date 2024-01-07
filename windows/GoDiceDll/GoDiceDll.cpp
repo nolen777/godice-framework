@@ -103,6 +103,7 @@ private:
     const string identifier_;
     const string name_;
     GattDeviceService service_;
+    GattSession gatt_session_;
     GattCharacteristic write_characteristic_;
     GattCharacteristic notify_characteristic_;
     event_token notify_token_;
@@ -197,6 +198,24 @@ private:
         {
             connected_ = false;
 
+            NamedLog("Getting session");
+            gatt_session_ = co_await GattSession::FromDeviceIdAsync(device_.BluetoothDeviceId());
+            if (gatt_session_ == nullptr)
+            {
+                NamedLog("Failed to get session\n");
+                
+                co_return false;
+            }
+            else
+            {
+                gatt_session_.SessionStatusChanged([this](const GattSession& session, const GattSessionStatusChangedEventArgs& args)
+                {
+                    NamedLog("Session status changed to {}\n", int(args.Status()));
+                    NamedLog("Error was {}\n", int(args.Error()));
+                });
+                gatt_session_.MaintainConnection(true);
+            }
+            
             NamedLog("Getting services\n");
             const auto servicesResult = co_await device_.GetGattServicesForUuidAsync(k_service_guid, BluetoothCacheMode::Cached);
             if (servicesResult.Status() != GattCommunicationStatus::Success)
@@ -402,7 +421,7 @@ public:
         const GattCharacteristic& notifyCh,
         const GattCharacteristic& writeCh
     ) : device_(dev), bluetoothAddress_(btAddr), identifier_(std::to_string(btAddr)), name_(to_string(dev.Name())), service_(service),
-        notify_characteristic_(notifyCh), write_characteristic_(writeCh)
+        notify_characteristic_(notifyCh), write_characteristic_(writeCh), gatt_session_(nullptr)
     {
     }
 
