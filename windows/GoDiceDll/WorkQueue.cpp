@@ -23,7 +23,7 @@ void WorkQueue::runner()
                 }
             }
 
-            if (work_item)
+            if (work_item != nullptr)
             {
                 work_item();
                 did_work = true;
@@ -45,4 +45,10 @@ void WorkQueue::stop()
     std::queue<WorkItem>().swap(work_queue_);
     keep_running_ = false;
     condition_.notify_one();
+}
+
+WorkQueue::~WorkQueue()
+{
+    stop();
+    runner_thread_.join();
 }

@@ -22,6 +22,7 @@ private:
     
 public:
     explicit WorkQueue(const std::string& nm) : name_(nm), runner_thread_(&WorkQueue::runner, this) {}
+    ~WorkQueue();
 
     void enqueue(const WorkItem& item);
 

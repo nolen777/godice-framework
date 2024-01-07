@@ -114,6 +114,8 @@ private:
     IAsyncOperation<bool> lockedDisconnect()
     {
         NamedLog("Attempting to disconnect\n");
+        connected_ = false;
+        
         if (notify_characteristic_ != nullptr)
         {
             try
@@ -138,8 +140,6 @@ private:
         {
             device_.ConnectionStatusChanged(std::exchange(connection_status_changed_token_, {}));
         }
-
-        connected_ = false;
 
         co_return true;
     }
