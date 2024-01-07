@@ -19,7 +19,7 @@ void DeviceConnectionFailedCallback(const char* identifier);
 void DeviceDisconnectedCallback(const char* identifier);
 void ListenerStoppedCallback(void);
 
-void Log(const char* str);
+void log(const char* str);
 
 void RequestColor(const char* identifier);
 
@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
 {
     cerr << "Starting!" << endl;
 
-    godice_set_logger(Log);
+    godice_set_logger(log);
     godice_set_callbacks(
         DeviceFoundCallback,
         DataCallback,
@@ -147,7 +147,7 @@ void RequestColor(const char* ident_)
     godice_send(identifier.c_str(), 1, data);
 }
 
-void Log(const char* str)
+void log(const char* str)
 {
     cerr << str;
 }

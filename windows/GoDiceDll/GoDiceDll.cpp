@@ -31,17 +31,17 @@ using namespace Windows::Storage::Streams;
 using Windows::Foundation::IAsyncOperation;
 using Windows::Foundation::IInspectable;
 
-static BluetoothLEAdvertisementWatcher gWatcher = nullptr;
+static BluetoothLEAdvertisementWatcher g_watcher = nullptr;
 
 class DeviceSession;
 
-static GDDeviceFoundCallbackFunction gDeviceFoundCallback = nullptr;
-static GDDataCallbackFunction gDataReceivedCallback = nullptr;
-static GDDeviceConnectedCallbackFunction gDeviceConnectedCallback = nullptr;
-static GDDeviceConnectionFailedCallbackFunction gDeviceConnectionFailedCallback = nullptr;
-static GDDeviceDisconnectedCallbackFunction gDeviceDisconnectedCallback = nullptr;
-static GDListenerStoppedCallbackFunction gListenerStoppedCallback = nullptr;
-static GDLogger gLogger = nullptr;
+static GDDeviceFoundCallbackFunction g_device_found_callback = nullptr;
+static GDDataCallbackFunction g_data_received_callback = nullptr;
+static GDDeviceConnectedCallbackFunction g_device_connected_callback = nullptr;
+static GDDeviceConnectionFailedCallbackFunction g_device_connection_failed_callback = nullptr;
+static GDDeviceDisconnectedCallbackFunction g_device_disconnected_callback = nullptr;
+static GDListenerStoppedCallbackFunction g_listener_stopped_callback = nullptr;
+static GDLogger g_logger = nullptr;
 
 using std::binary_semaphore;
 using std::condition_variable;
@@ -58,43 +58,42 @@ using std::unique_lock;
 using std::unordered_map;
 using std::pmr::unordered_set;
 
-static void Log(const char* str);
-static WorkQueue gBluetoothQueue;
-static WorkQueue gCallbackQueue;
+static auto log(const char* str) -> void;
+static WorkQueue g_bluetooth_queue("BluetoothQueue");
+static WorkQueue g_callback_queue("CallbackQueue");
 
-static binary_semaphore gMapSema = binary_semaphore(1);
-static unordered_map<string, shared_ptr<DeviceSession>> gDevicesByIdentifier;
-static unordered_set<string> gDevicesInProgress;
+static unordered_map<string, shared_ptr<DeviceSession>> g_devices_by_identifier;
+static unordered_set<string> g_devices_in_progress;
 
-static inline constexpr guid kServiceGuid = guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
-static inline constexpr guid kWriteGuid = guid("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
-static inline constexpr guid kNotifyGuid = guid("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
+static inline constexpr guid k_service_guid = guid("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+static inline constexpr guid k_write_guid = guid("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
+static inline constexpr guid k_notify_guid = guid("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
 
-static void Log(const char* str)
+static void log(const char* str)
 {
-    if (gLogger)
+    if (g_logger)
     {
-        gLogger(str);
+        g_logger(str);
     }
 }
 
 template <class Args>
 static void Log(const char* str, Args&& args...)
 {
-    if (gLogger)
+    if (g_logger)
     {
         auto formattedStr = std::vformat(str, std::make_format_args(args));
-        gLogger(formattedStr.c_str());
+        g_logger(formattedStr.c_str());
     }
 }
 
-static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watcher,
-                                     const BluetoothLEAdvertisementReceivedEventArgs& args);
+static auto received_device_found_event(const BluetoothLEAdvertisementWatcher& watcher,
+                                        const BluetoothLEAdvertisementReceivedEventArgs& args) -> void;
 
-static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(uint64_t btAddr);
-static IAsyncOperation<bool> internalConnect(const string& identifier);
-static IAsyncOperation<bool> internalSend(const string& identifier, const IBuffer& buffer);
-static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier);
+static auto on_queue_received_device_found_event(uint64_t btAddr) -> IAsyncOperation<bool>;
+static auto on_queue_internal_connect(const string& identifier) -> IAsyncOperation<bool>;
+static auto on_queue_send(const string& identifier, const IBuffer& buffer) -> IAsyncOperation<bool>;
+static auto internal_connection_changed_handler(const BluetoothLEDevice& dev, const string& identifier) -> void;
 
 class DeviceSession : std::enable_shared_from_this<DeviceSession>
 {
@@ -181,7 +180,7 @@ private:
 
     void NamedLog(const char* str)
     {
-        Log(("[" + name_ + "] " + str).c_str());
+        log(("[" + name_ + "] " + str).c_str());
     }
     
     template <class Args>
@@ -189,7 +188,7 @@ private:
     {
         auto prefixed = "[" + name_ + "] " + str;
         auto formattedStr = std::vformat(prefixed, std::make_format_args(args));
-        Log(formattedStr.c_str());
+        log(formattedStr.c_str());
     }
 
     IAsyncOperation<bool> lockedConnect()
@@ -199,7 +198,7 @@ private:
             connected_ = false;
 
             NamedLog("Getting services\n");
-            const auto servicesResult = co_await device_.GetGattServicesForUuidAsync(kServiceGuid, BluetoothCacheMode::Cached);
+            const auto servicesResult = co_await device_.GetGattServicesForUuidAsync(k_service_guid, BluetoothCacheMode::Cached);
             if (servicesResult.Status() != GattCommunicationStatus::Success)
             {
                 auto errString = GDSRErrorString(servicesResult);
@@ -228,11 +227,11 @@ private:
             NamedLog("Setting status changed handler\n");
             connection_status_changed_token_ = device_.ConnectionStatusChanged([this](auto&& dev, auto&& args)
             {
-                internalConnectionChangedHandler(dev, identifier_);
+                internal_connection_changed_handler(dev, identifier_);
             });
 
             NamedLog("Getting notify characteristic\n");
-            const auto notifChsResponse = co_await service_.GetCharacteristicsForUuidAsync(kNotifyGuid, BluetoothCacheMode::Cached);
+            const auto notifChsResponse = co_await service_.GetCharacteristicsForUuidAsync(k_notify_guid, BluetoothCacheMode::Cached);
             if (notifChsResponse.Status() != GattCommunicationStatus::Success)
             {
                 auto errString = GCRErrorString(notifChsResponse);
@@ -255,7 +254,13 @@ private:
                 
                 co_return false;
             }
-
+            
+            NamedLog("Setting value changed handler\n");
+            notify_token_ = notify_characteristic_.ValueChanged([this](auto&& ch, auto&& args)
+            {
+                notify_characteristic_value_changed(args);
+            });
+            
             NamedLog("Writing configuration\n");
             auto configResult = co_await notify_characteristic_
                                 .WriteClientCharacteristicConfigurationDescriptorAsync(
@@ -268,7 +273,7 @@ private:
             }
 
             NamedLog("Getting write characteristic\n");
-            const auto wrChsResult = co_await service_.GetCharacteristicsForUuidAsync(kWriteGuid, BluetoothCacheMode::Cached);
+            const auto wrChsResult = co_await service_.GetCharacteristicsForUuidAsync(k_write_guid, BluetoothCacheMode::Cached);
             if (wrChsResult.Status() != GattCommunicationStatus::Success)
             {
                 auto errString = GCRErrorString(wrChsResult);
@@ -292,12 +297,6 @@ private:
                 co_return false;
             }
 
-            NamedLog("Setting value changed handler\n");
-            notify_token_ = notify_characteristic_.ValueChanged([this](auto&& ch, auto&& args)
-            {
-                NotifyCharacteristicValueChanged(args);
-            });
-
             connected_ = device_.ConnectionStatus() == BluetoothConnectionStatus::Connected;
 
             NamedLog("Connection status is {}\n", connected_);
@@ -311,7 +310,6 @@ private:
         }
         catch (winrt::hresult_error& e)
         {
-            const auto code = e.code();
             NamedLog("Caught exception code {} while connecting\n", e.code().value);
                 
             co_return false;
@@ -390,7 +388,7 @@ public:
             catch (...)
             {
                 auto e = std::current_exception();
-                Log("Caught exception while creating new session\n");
+                log("Caught exception while creating new session\n");
             }
 
             return shared_ptr<DeviceSession>(nullptr);
@@ -408,15 +406,15 @@ public:
     {
     }
 
-    void NotifyCharacteristicValueChanged(const GattValueChangedEventArgs& args) const
+    void notify_characteristic_value_changed(const GattValueChangedEventArgs& args) const
     {
-        if (gDataReceivedCallback != nullptr)
+        if (g_data_received_callback != nullptr)
         {
             const IBuffer& data = args.CharacteristicValue();
             const string ident = this->identifier_;
-            gCallbackQueue.Enqueue([data, ident]
+            g_callback_queue.enqueue([data, ident]
             {
-                gDataReceivedCallback(ident.c_str(), data.Length(), data.data());
+                g_data_received_callback(ident.c_str(), data.Length(), data.data());
             });
         }
     }
@@ -438,8 +436,7 @@ public:
         }
         else
         {
-            bool result = co_await lockedConnect();
-            if (result)
+            if (bool result = co_await lockedConnect())
             {
                 success = true;
             }
@@ -453,7 +450,7 @@ public:
         co_return success;
     }
 
-    IAsyncOperation<bool> Send(const IBuffer& msg)
+    IAsyncOperation<bool> send(const IBuffer& msg)
     {
         use_sema_.acquire();
         NamedLog("Attempting to write {} bytes\n", msg.Length());
@@ -464,7 +461,7 @@ public:
         co_return result;
     }
 
-    IAsyncOperation<bool> Disconnect()
+    IAsyncOperation<bool> disconnect()
     {
         try
         {
@@ -473,10 +470,10 @@ public:
             use_sema_.release();
 
             const string ident = identifier_;
-            gCallbackQueue.Enqueue([ident]
+            g_callback_queue.enqueue([ident]
             {
-                if (gDeviceDisconnectedCallback) {
-                    gDeviceDisconnectedCallback(ident.c_str());
+                if (g_device_disconnected_callback) {
+                    g_device_disconnected_callback(ident.c_str());
                 }
             });
 
@@ -511,78 +508,76 @@ void godice_set_callbacks(
     GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
     GDListenerStoppedCallbackFunction listenerStoppedCallback)
 {
-    gBluetoothQueue.Enqueue([=]
+    g_bluetooth_queue.enqueue([=]
     {
-        gDeviceFoundCallback = deviceFoundCallback;
-        gDataReceivedCallback = dataReceivedCallback;
-        gDeviceConnectedCallback = deviceConnectedCallback;
-        gDeviceConnectionFailedCallback = deviceConnectionFailedCallback;
-        gDeviceDisconnectedCallback = deviceDisconnectedCallback;
-        gListenerStoppedCallback = listenerStoppedCallback;
+        g_device_found_callback = deviceFoundCallback;
+        g_data_received_callback = dataReceivedCallback;
+        g_device_connected_callback = deviceConnectedCallback;
+        g_device_connection_failed_callback = deviceConnectionFailedCallback;
+        g_device_disconnected_callback = deviceDisconnectedCallback;
+        g_listener_stopped_callback = listenerStoppedCallback;
     });
 }
 
 void godice_set_logger(GDLogger logger)
 {
-    gBluetoothQueue.Enqueue([logger]
+    g_bluetooth_queue.enqueue([logger]
     {
-        gLogger = logger;
+        g_logger = logger;
     });
 }
 
 void godice_start_listening()
 {
-    gBluetoothQueue.Enqueue([]
+    g_bluetooth_queue.enqueue([]
     {
-        if (gWatcher == nullptr)
+        if (g_watcher == nullptr)
         {
-            gWatcher = BluetoothLEAdvertisementWatcher();
+            g_watcher = BluetoothLEAdvertisementWatcher();
         }
-        gWatcher.ScanningMode(BluetoothLEScanningMode::Active);
-        gWatcher.AdvertisementFilter().Advertisement().ServiceUuids().Append(kServiceGuid);
+        g_watcher.ScanningMode(BluetoothLEScanningMode::Active);
+        g_watcher.AdvertisementFilter().Advertisement().ServiceUuids().Append(k_service_guid);
 
-        auto result = gWatcher.Received(ReceivedDeviceFoundEvent);
+        auto result = g_watcher.Received(received_device_found_event);
 
-        gWatcher.Stopped([=](auto&&, auto&&)
+        g_watcher.Stopped([=](auto&&, auto&&)
         {
-            Log("Watcher Stopped\n");
+            log("Watcher Stopped\n");
 
-            gCallbackQueue.Enqueue([]
+            g_callback_queue.enqueue([]
             {
-                if (gListenerStoppedCallback)
+                if (g_listener_stopped_callback)
                 {
-                    gListenerStoppedCallback();
+                    g_listener_stopped_callback();
                 }
             });
         });
 
-        if (gDeviceFoundCallback)
+        if (g_device_found_callback)
         {
-            // Make a copy of sessions inside the lock
-            gMapSema.acquire();
-            unordered_map<string, shared_ptr<DeviceSession>> sessions = gDevicesByIdentifier;
-            gMapSema.release();
+            // Make a copy of sessions inside the queue
+            unordered_map<string, shared_ptr<DeviceSession>> sessions = g_devices_by_identifier;
 
-            gCallbackQueue.Enqueue([sessions]
+            g_callback_queue.enqueue([sessions]
             {
                 for (const auto& kv : sessions)
                 {
-                    gDeviceFoundCallback(kv.first.c_str(), kv.second->DeviceName().c_str());
+                    g_device_found_callback(kv.first.c_str(), kv.second->DeviceName().c_str());
                 }
             });
         }
 
-        gWatcher.Start();
+        g_watcher.Start();
     });
 }
 
 void godice_connect(const char* inIdent)
 {
     string identifier = inIdent;
-    gBluetoothQueue.Enqueue([identifier]
+    g_bluetooth_queue.enqueue([identifier]
     {
         Log("Trying to connect to {}\n", identifier);
-        bool result = internalConnect(identifier).get();
+        bool result = on_queue_internal_connect(identifier).get();
         Log("Result was {}\n", result);
     });
 }
@@ -590,17 +585,15 @@ void godice_connect(const char* inIdent)
 void godice_disconnect(const char* inIdent)
 {
     string identifier = inIdent;
-    gBluetoothQueue.Enqueue([identifier]
+    g_bluetooth_queue.enqueue([identifier]
     {
         shared_ptr<DeviceSession> session = nullptr;
 
-        gMapSema.acquire();
-        session = gDevicesByIdentifier[identifier];
-        gMapSema.release();
+        session = g_devices_by_identifier[identifier];
     
         if (session == nullptr) return;
         
-        bool result = session->Disconnect().get();
+        bool result = session->disconnect().get();
     });
 }
 
@@ -613,17 +606,15 @@ void godice_send(const char* id, uint32_t data_size, uint8_t* data)
 
     const IBuffer buf = writer.DetachBuffer();
     
-    gBluetoothQueue.Enqueue([identifier, buf]
+    g_bluetooth_queue.enqueue([identifier, buf]
     {
-        bool success = internalSend(identifier, buf).get();
+        bool success = on_queue_send(identifier, buf).get();
     });
 }
 
-static IAsyncOperation<bool> internalSend(const string& identifier, const IBuffer& buffer)
+static IAsyncOperation<bool> on_queue_send(const string& identifier, const IBuffer& buffer)
 {
-    gMapSema.acquire();
-    const shared_ptr<DeviceSession> session = gDevicesByIdentifier[identifier];
-    gMapSema.release();
+    const shared_ptr<DeviceSession> session = g_devices_by_identifier[identifier];
 
     if (session == nullptr)
     {
@@ -631,39 +622,35 @@ static IAsyncOperation<bool> internalSend(const string& identifier, const IBuffe
     }
     else
     {
-        co_return co_await session->Send(buffer);
+        co_return co_await session->send(buffer);
     }
     co_return false;
 }
 
-static void internalConnectionChangedHandler(const BluetoothLEDevice& dev, const string& identifier)
+static void internal_connection_changed_handler(const BluetoothLEDevice& dev, const string& identifier)
 {
-    gBluetoothQueue.Enqueue([dev, identifier]
+    g_bluetooth_queue.enqueue([dev, identifier]
     {
         if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
         {
             Log("Got a disconnection event for {}\n", identifier);
-            gMapSema.acquire();
-            const auto& session = gDevicesByIdentifier[identifier];
-            gMapSema.release();
+            const auto& session = g_devices_by_identifier[identifier];
         
             if (session != nullptr)
             {
-                session->Disconnect().get();
+                session->disconnect().get();
             }
         }
     });
 }
 
-static IAsyncOperation<bool> internalConnect(const string& inIdent)
+static IAsyncOperation<bool> on_queue_internal_connect(const string& inIdent)
 {
     string identifier = inIdent;
     shared_ptr<DeviceSession> session;
     bool success = false;
     
-    gMapSema.acquire();
-    session = gDevicesByIdentifier[identifier];
-    gMapSema.release();
+    session = g_devices_by_identifier[identifier];
     
     if (session == nullptr)
     {
@@ -675,80 +662,79 @@ static IAsyncOperation<bool> internalConnect(const string& inIdent)
         success = co_await session->Connect();
     }
     
-    if (success && gDeviceConnectedCallback)
+    if (success && g_device_connected_callback)
     {
-        gCallbackQueue.Enqueue([identifier]
+        g_callback_queue.enqueue([identifier]
         {
-            gDeviceConnectedCallback(identifier.c_str());
+            g_device_connected_callback(identifier.c_str());
         });
     }
-    if (!success && gDeviceConnectionFailedCallback)
+    if (!success && g_device_connection_failed_callback)
     {
-        gCallbackQueue.Enqueue([identifier]
+        g_callback_queue.enqueue([identifier]
         {
-            gDeviceConnectionFailedCallback(identifier.c_str());
+            g_device_connection_failed_callback(identifier.c_str());
         });
     }
     
     co_return success;
 }
 
-static void ReceivedDeviceFoundEvent(const BluetoothLEAdvertisementWatcher& watcher,
+static void received_device_found_event(const BluetoothLEAdvertisementWatcher& watcher,
                                      const BluetoothLEAdvertisementReceivedEventArgs& args)
 {
     uint64_t btAddr = args.BluetoothAddress();
     string identifier = std::to_string(btAddr);
-    internalReceivedDeviceFoundEvent(btAddr);
+
+    g_bluetooth_queue.enqueue([btAddr, identifier]
+    {
+        on_queue_received_device_found_event(btAddr).get();
+    });
 }
 
-static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(const uint64_t inBtAddr) {
+static IAsyncOperation<bool> on_queue_received_device_found_event(const uint64_t inBtAddr) {
     auto btAddr = inBtAddr;
-    //
+    
     auto identifier =  std::to_string(btAddr);;
     
     shared_ptr<DeviceSession> session = nullptr;
 
     bool needsNewSession = true;
-    gMapSema.acquire();
-    if (gDevicesInProgress.contains(identifier))
+    
+    if (g_devices_in_progress.contains(identifier))
     {
         needsNewSession = false;
-        gDevicesInProgress.insert(identifier);
+        g_devices_in_progress.insert(identifier);
     }
-    else if (gDevicesByIdentifier.contains(identifier))
+    else if (g_devices_by_identifier.contains(identifier))
     {
         needsNewSession = false;
     }
-    gMapSema.release();
 
     if (needsNewSession)
     {
         session = co_await DeviceSession::MakeSession(btAddr);
         
-        if (session == nullptr)
+        if (session != nullptr)
         {
-            Log("Failed to create new session\n");
+            g_devices_by_identifier.emplace(std::make_pair(identifier, session));
+            g_devices_in_progress.erase(identifier);
         }
         else
         {
-            gMapSema.acquire();
-            gDevicesByIdentifier.emplace(std::make_pair(identifier, session));
-            gDevicesInProgress.erase(identifier);
-            gMapSema.release();
+            log("Failed to create new session\n");
         }
     }
     else
     {
-        gMapSema.acquire();
-        session = gDevicesByIdentifier[identifier];
-        gMapSema.release();
+        session = g_devices_by_identifier[identifier];
     }
 
-    if (session && gDeviceFoundCallback)
+    if (session && g_device_found_callback)
     {
-        gCallbackQueue.Enqueue([identifier, session]
+        g_callback_queue.enqueue([identifier, session]
         {
-            gDeviceFoundCallback(identifier.c_str(), session->DeviceName().c_str());
+            g_device_found_callback(identifier.c_str(), session->DeviceName().c_str());
         });
     }
     co_return session != nullptr;
@@ -756,30 +742,24 @@ static IAsyncOperation<bool> internalReceivedDeviceFoundEvent(const uint64_t inB
 
 void godice_stop_listening()
 {
-    gBluetoothQueue.Enqueue([]
+    g_bluetooth_queue.enqueue([]
     {
-        gWatcher.Stop();
+        g_watcher.Stop();
     });
 }
 
 void godice_reset()
 {
-    gBluetoothQueue.Enqueue([]
+    g_bluetooth_queue.enqueue([]
     {
-        gWatcher.Stop();
-    
-        gMapSema.acquire();
+        g_watcher.Stop();
 
-        while (gDevicesInProgress.size() > 0)
+        while (g_devices_in_progress.size() > 0)
         {
-            gMapSema.release();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            gMapSema.acquire();
         }
     
-        gDevicesByIdentifier.clear();
-    
-        gMapSema.release();
+        g_devices_by_identifier.clear();
     });
 }
 

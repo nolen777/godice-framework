@@ -1,39 +1,48 @@
 ﻿#include "WorkQueue.h"
 
-void WorkQueue::Runner()
+void WorkQueue::runner()
 {
-    while (1)
+    while (keep_running_)
     {
-        bool didWork = false;
+        bool did_work = false;
 
         do
         {
-            WorkItem workItem = nullptr;
+            WorkItem work_item = nullptr;
             {
                 std::unique_lock lk(mutex_);
-                if (workQueue_.empty())
+                if (!keep_running_) return;
+                if (work_queue_.empty())
                 {
                     condition_.wait(lk);
                 }
                 else
                 {
-                    workItem = workQueue_.front();
-                    workQueue_.pop();
+                    work_item = work_queue_.front();
+                    work_queue_.pop();
                 }
             }
 
-            if (workItem)
+            if (work_item)
             {
-                workItem();
-                didWork = true;
+                work_item();
+                did_work = true;
             }
-        } while (didWork);
+        } while (did_work && keep_running_);
     }
 }
 
-void WorkQueue::Enqueue(const WorkItem& item)
+void WorkQueue::enqueue(const WorkItem& item)
 {
     std::unique_lock lk(mutex_);
-    workQueue_.push(item);
+    work_queue_.push(item);
+    condition_.notify_one();
+}
+
+void WorkQueue::stop()
+{
+    std::unique_lock lk(mutex_);
+    std::queue<WorkItem>().swap(work_queue_);
+    keep_running_ = false;
     condition_.notify_one();
 }
