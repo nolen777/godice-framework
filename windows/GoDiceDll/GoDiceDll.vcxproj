@@ -165,11 +165,13 @@
     <ClCompile Include="GoDiceDll.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="WorkQueue.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GoDiceDll.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="WorkQueue.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

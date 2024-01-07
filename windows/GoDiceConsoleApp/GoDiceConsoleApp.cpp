@@ -2,6 +2,7 @@
 #include <future>
 #include <iostream>
 #include <ostream>
+#include <semaphore>
 #include <unordered_set>
 #include <string>
 
@@ -18,7 +19,7 @@ void DeviceConnectionFailedCallback(const char* identifier);
 void DeviceDisconnectedCallback(const char* identifier);
 void ListenerStoppedCallback(void);
 
-void Log(const char* str);
+void log(const char* str);
 
 void RequestColor(const char* identifier);
 
@@ -27,10 +28,12 @@ std::unordered_set<string> connectedDevices;
 std::unordered_set<string> connectingDevices;
 std::unordered_map<string, string> deviceNames;
 
+
 int main(int argc, char* argv[])
 {
     cerr << "Starting!" << endl;
-    godice_set_logger(Log);
+
+    godice_set_logger(log);
     godice_set_callbacks(
         DeviceFoundCallback,
         DataCallback,
@@ -44,8 +47,9 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-void DeviceFoundCallback(const char* identifier, const char* name)
+void DeviceFoundCallback(const char* ident_, const char* name)
 {
+    const string identifier(ident_);
     {
         std::scoped_lock lk(connectedMutex);
         if (connectedDevices.contains(identifier)) return;
@@ -54,7 +58,8 @@ void DeviceFoundCallback(const char* identifier, const char* name)
         deviceNames[identifier] = name;
     }
     cerr << "Device found! " << identifier << " : " << name << endl;
-    godice_connect(identifier);
+
+    godice_connect(identifier.c_str());
 }
 
 void DataCallback(const char* identifier, uint32_t data_size, uint8_t* data)
@@ -101,10 +106,7 @@ void DeviceConnectedCallback(const char* identifier)
     }
 
     std::string id(identifier);
-    std::thread([id]
-    {
-        RequestColor(id.c_str());
-    }).detach();
+    RequestColor(id.c_str());
 }
 
 void DeviceDisconnectedCallback(const char* identifier)
@@ -126,8 +128,9 @@ void ListenerStoppedCallback(void)
     cerr << "  Listener stopped!" << endl;
 }
 
-void RequestColor(const char* identifier)
+void RequestColor(const char* ident_)
 {
+    const string identifier(ident_);
     // uint8_t pulseMessage[] = { 
     //     (uint8_t) 16 /* set LED toggle */,
     //     0x05 /* pulse count */,
@@ -141,10 +144,10 @@ void RequestColor(const char* identifier)
     // godice_send(identifier, sizeof(pulseMessage), pulseMessage);
     
     uint8_t data[] = { 23 };
-    godice_send(identifier, 1, data);
+    godice_send(identifier.c_str(), 1, data);
 }
 
-void Log(const char* str)
+void log(const char* str)
 {
     cerr << str;
 }
