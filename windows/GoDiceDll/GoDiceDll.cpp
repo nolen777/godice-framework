@@ -77,12 +77,12 @@ static void log(const char* str)
     }
 }
 
-template <class Args>
-static void Log(const char* str, Args&& args...)
+template <typename ...P>
+static void log(string &&format, P&&... args)
 {
     if (g_logger)
     {
-        auto formattedStr = std::vformat(str, std::make_format_args(args));
+        auto formattedStr = std::vformat(format, std::make_format_args(args...));
         g_logger(formattedStr.c_str());
     }
 }
@@ -184,11 +184,11 @@ private:
         log(("[" + name_ + "] " + str).c_str());
     }
     
-    template <class Args>
-    void NamedLog(const char* str, Args&& args...)
+    template <typename ...P>
+    void NamedLog(string &&format, P&&... args)
     {
-        auto prefixed = "[" + name_ + "] " + str;
-        auto formattedStr = std::vformat(prefixed, std::make_format_args(args));
+        auto prefixed = "[" + name_ + "] " + format;
+        auto formattedStr = std::vformat(prefixed, std::make_format_args(args...));
         log(formattedStr.c_str());
     }
 
@@ -210,8 +210,7 @@ private:
             {
                 gatt_session_.SessionStatusChanged([this](const GattSession& session, const GattSessionStatusChangedEventArgs& args)
                 {
-                    NamedLog("Session status changed to {}\n", int(args.Status()));
-                    NamedLog("Error was {}\n", int(args.Error()));
+                    NamedLog("Session status changed to {}, error was {}\n", int(args.Status()), int(args.Error()));
                 });
                 gatt_session_.MaintainConnection(true);
             }
@@ -398,11 +397,11 @@ public:
             }
             catch (std::exception& e)
             {
-                Log("Caught exception while creating session {}\n", e.what());
+                log("Caught exception while creating session {}\n", e.what());
             }
             catch (winrt::hresult_error& e)
             {
-                Log("Caught exception while creating session {}\n", to_string(e.message()));
+                log("Caught exception while creating session {}\n", to_string(e.message()));
             }
             catch (...)
             {
@@ -595,9 +594,9 @@ void godice_connect(const char* inIdent)
     string identifier = inIdent;
     g_bluetooth_queue.enqueue([identifier]
     {
-        Log("Trying to connect to {}\n", identifier);
+        log("Trying to connect to {}\n", identifier);
         bool result = on_queue_internal_connect(identifier).get();
-        Log("Result was {}\n", result);
+        log("Result was {}\n", result);
     });
 }
 
@@ -637,7 +636,7 @@ static IAsyncOperation<bool> on_queue_send(const string& identifier, const IBuff
 
     if (session == nullptr)
     {
-        Log("No session found for {}\n", identifier);
+        log("No session found for {}\n", identifier);
     }
     else
     {
@@ -652,7 +651,7 @@ static void internal_connection_changed_handler(const BluetoothLEDevice& dev, co
     {
         if (dev.ConnectionStatus() == BluetoothConnectionStatus::Disconnected)
         {
-            Log("Got a disconnection event for {}\n", identifier);
+            log("Got a disconnection event for {}\n", identifier);
             const auto& session = g_devices_by_identifier[identifier];
         
             if (session != nullptr)
@@ -673,7 +672,7 @@ static IAsyncOperation<bool> on_queue_internal_connect(const string& inIdent)
     
     if (session == nullptr)
     {
-        Log("No session for {}\n", identifier);
+        log("No session for {}\n", identifier);
         success = false;
     }
     else
