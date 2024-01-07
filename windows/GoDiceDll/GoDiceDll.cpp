@@ -6,7 +6,6 @@
 #include "stdafx.h"
 
 #include <ppltasks.h>
-#include <future>
 #include <semaphore>
 #include <unordered_set>
 
@@ -17,7 +16,7 @@
 #pragma comment(lib, "windowsapp")
 
 // macro for file, see also https://stackoverflow.com/a/14421702
-#define __WFILE__ L"BleWinrtDll.cpp"
+#define __WFILE__ L"GoDiceDll.cpp"
 
 using namespace winrt;
 
@@ -44,19 +43,13 @@ static GDListenerStoppedCallbackFunction g_listener_stopped_callback = nullptr;
 static GDLogger g_logger = nullptr;
 
 using std::binary_semaphore;
-using std::condition_variable;
-using std::counting_semaphore;
 using std::exception;
 using std::function;
-using std::shared_future;
 using std::mutex;
-using std::queue;
-using std::scoped_lock;
 using std::shared_ptr;
 using std::string;
-using std::unique_lock;
 using std::unordered_map;
-using std::pmr::unordered_set;
+using std::unordered_set;
 
 static auto log(const char* str) -> void;
 static WorkQueue g_bluetooth_queue("BluetoothQueue");
