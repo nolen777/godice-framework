@@ -50,7 +50,7 @@ class GoDiceDataParser {
     
     
     private func rollVector(_ rawData: Data) -> DieVector? {
-        guard let firstByte = rawData.first, firstByte == 83 else {
+        guard rawData.count == 4, let firstByte = rawData.first, firstByte == 83 else {
             print("Bad raw data \(rawData)")
             return nil
         }
@@ -69,6 +69,10 @@ class GoDiceDataParser {
             return DiceResults.RollStarted
             
         case 66:
+            guard rawData.count >= 4 else {
+                print("Truncated battery data")
+                return nil
+            }
             if rawData[1] == 97 && rawData[2] == 116 {
                 print("battery level received: \(rawData[3])")
                 return .BatteryLevel(value: rawData[3])
@@ -78,6 +82,10 @@ class GoDiceDataParser {
             }
             
         case 67:
+            guard rawData.count >= 4 else {
+                print("Truncated color data")
+                return nil
+            }
             if rawData[1] == 111 && rawData[2] == 108 {
                 print("dice color received: \(rawData[3])")
                 return .ColorFetched(value: rawData[3])

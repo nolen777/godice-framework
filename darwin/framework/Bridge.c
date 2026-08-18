@@ -11,6 +11,7 @@
 extern void set_device_found_callback(void (^)(const char* identifier, const char* name));
 extern void set_data_callback(void (^)(const char* identifier, uint32_t data_size, uint8_t* data));
 extern void set_device_connected_callback(void (^)(const char* identifier));
+extern void set_device_connection_failed_callback(void (^)(const char* identifier));
 extern void set_device_disconnected_callback(void (^)(const char* identifier));
 extern void set_listener_stopped_callback(void (^)(void));
 extern void set_logger(void (^)(const char* str));
@@ -37,6 +38,10 @@ void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
     
     set_device_connected_callback(^(const char* identifier) {
         deviceConnectedCallback(identifier);
+    });
+
+    set_device_connection_failed_callback(^(const char* identifier) {
+        deviceConnectionFailedCallback(identifier);
     });
     
     set_device_disconnected_callback(^(const char* identifier) {

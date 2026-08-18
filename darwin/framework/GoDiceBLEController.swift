@@ -71,10 +71,21 @@ public class GoDiceBLEController: NSObject {
     }
     
     public func sendData(identifier: String, data: Data) -> Void {
-        if let session = sessions[identifier] {
-            logger("Sending data!\n")
-            session.peripheral.writeValue(data, for: session.writeCharacteristic, type: .withResponse)
+        guard let session = sessions[identifier] else {
+            logger("No session found for \(identifier)")
+            return
         }
+        guard session.peripheral.state == .connected else {
+            logger("Cannot send to disconnected device \(identifier)")
+            return
+        }
+        guard let writeCharacteristic = session.writeCharacteristic else {
+            logger("Cannot send before write characteristic is ready for \(identifier)")
+            return
+        }
+
+        logger("Sending \(data.count) bytes to \(identifier)\n")
+        session.peripheral.writeValue(data, for: writeCharacteristic, type: .withResponse)
     }
     
     public var listening: Bool = false {
@@ -135,7 +146,7 @@ public class GoDiceBLEController: NSObject {
         let dataCallback: (CBPeripheral, Data) -> Void
         let peripheral: CBPeripheral
         let logger: Logger
-        var writeCharacteristic: CBCharacteristic!
+        var writeCharacteristic: CBCharacteristic?
         
         init(peripheral: CBPeripheral,
              connectedCallback: @escaping(CBPeripheral) -> Void,
@@ -155,37 +166,64 @@ public class GoDiceBLEController: NSObject {
             peripheral.discoverServices([GoDiceBLEController.serviceUUID])
         }
         
-        func send(message: Data) -> Void {
-            peripheral.writeValue(message, for: writeCharacteristic, type: .withResponse)
-        }
-        
         func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-            if let services = peripheral.services {
-                for service in services {
-                    peripheral.discoverCharacteristics([GoDiceBLEController.writeUUID, GoDiceBLEController.notifyUUID], for: service)
-                }
-            } else {
+            if let error = error {
+                logger("Service discovery failed: \(error.localizedDescription)")
                 connectionFailedCallback(peripheral)
+                return
+            }
+            guard let services = peripheral.services, !services.isEmpty else {
+                logger("No GoDice service found")
+                connectionFailedCallback(peripheral)
+                return
+            }
+
+            for service in services {
+                peripheral.discoverCharacteristics([GoDiceBLEController.writeUUID, GoDiceBLEController.notifyUUID], for: service)
             }
         }
         
         func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+            if let error = error {
+                logger("Characteristic discovery failed: \(error.localizedDescription)")
+                connectionFailedCallback(peripheral)
+                return
+            }
             if let characteristics = service.characteristics {
                 guard let notifyCH = characteristics.first(where: { $0.uuid == GoDiceBLEController.notifyUUID }) else {
                     logger("Unable to find notify characteristic")
+                    connectionFailedCallback(peripheral)
                     return
                 }
                 guard let writeCH = characteristics.first(where: { $0.uuid == GoDiceBLEController.writeUUID }) else {
                     logger("Unable to find write characteristic")
+                    connectionFailedCallback(peripheral)
                     return
                 }
                 writeCharacteristic = writeCH
                 peripheral.setNotifyValue(true, for: notifyCH)
-                
-                connectedCallback(peripheral)
             } else {
                 connectionFailedCallback(peripheral)
             }
+        }
+
+        func peripheral(_ peripheral: CBPeripheral,
+                        didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                        error: Error?) {
+            if let error = error {
+                logger("Notification subscription failed: \(error.localizedDescription)")
+                connectionFailedCallback(peripheral)
+                return
+            }
+            guard characteristic.uuid == GoDiceBLEController.notifyUUID,
+                  characteristic.isNotifying,
+                  writeCharacteristic != nil else {
+                logger("Notification characteristic is not ready")
+                connectionFailedCallback(peripheral)
+                return
+            }
+
+            connectedCallback(peripheral)
         }
         
         func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -227,14 +265,19 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
     }
     
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        sessions[peripheral.identifier.uuidString] = DiceSession(
+        let identifier = peripheral.identifier.uuidString
+        guard sessions[identifier] == nil else {
+            return
+        }
+
+        sessions[identifier] = DiceSession(
             peripheral: peripheral, 
             connectedCallback: deviceConnected,
             connectionFailedCallback: deviceConnectionFailed,
             dataCallback: dataReceived,
         logger: logger)
         
-        deviceFoundCallback(peripheral.identifier.uuidString, peripheral.name ?? "")
+        deviceFoundCallback(identifier, peripheral.name ?? "")
     }
     
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -248,6 +291,13 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
         }
         
         session.run()
+    }
+
+    public func centralManager(_ central: CBCentralManager,
+                               didFailToConnect peripheral: CBPeripheral,
+                               error: Error?) {
+        logger("Failed to connect \(peripheral.identifier.uuidString): \(error?.localizedDescription ?? "unknown error")")
+        deviceConnectionFailedCallback(peripheral.identifier.uuidString)
     }
     
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
