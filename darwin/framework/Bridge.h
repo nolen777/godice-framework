@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern “C” {
+extern "C" {
 #endif
 
 typedef void (*GDDeviceFoundCallbackFunction)(const char* identifier, const char* name);

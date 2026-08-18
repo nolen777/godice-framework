@@ -8,9 +8,47 @@
 import SwiftUI
 import GodiceClient
 
+final class GoDiceClientModel: ObservableObject {
+    private let controller = GoDiceBLEController()
+    private let parser = GoDiceDataParser()
+
+    init() {
+        controller.setDeviceFoundCallback { [weak self] identifier, name in
+            print("Found \(name): \(identifier)")
+            self?.controller.connectDevice(identifier: identifier)
+        }
+
+        controller.setDeviceConnectedCallback { identifier in
+            print("Connected: \(identifier)")
+        }
+
+        controller.setDeviceConnectionFailedCallback { identifier in
+            print("Connection failed: \(identifier)")
+        }
+
+        controller.setDeviceDisconnectedCallback { identifier in
+            print("Disconnected: \(identifier)")
+        }
+
+        controller.setDataCallback { [weak self] name, data in
+            guard let self = self else {
+                return
+            }
+            if let result = self.parser.possibleDieRollData(rawData: data) {
+                print("\(name) received \(result)")
+            } else {
+                print("\(name) received \(data.count) bytes but failed to parse")
+            }
+        }
+    }
+
+    func setListening(_ listening: Bool) {
+        controller.listening = listening
+    }
+}
+
 struct ContentView: View {
-    let btc = GoDiceBLEController()
-    let parser = GoDiceDataParser()
+    @StateObject private var client = GoDiceClientModel()
     @State var listenForBluetooth: Bool
     
     var body: some View {
@@ -18,23 +56,11 @@ struct ContentView: View {
             Toggle("Listen for Treadmill",
                    isOn: $listenForBluetooth)
             .onChange(of: listenForBluetooth) { newValue in
-                btc.listening = newValue
+                client.setListening(newValue)
             }
         }
         .padding().onAppear {
-            btc.listening = listenForBluetooth
-            
-            btc.setDataCallback { (name, data) in
-                if let data = data {
-                    if let result = parser.possibleDieRollData(rawData: data) {
-                        print("\(name) received \(result)")
-                    } else {
-                        print("\(name) received \(data.count) but failed to parse")
-                    }
-                } else {
-                    print("Connected: \(name)")
-                }
-            }
+            client.setListening(listenForBluetooth)
         }
     }
 }

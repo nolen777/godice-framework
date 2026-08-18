@@ -11,7 +11,14 @@ using UnityGoDiceInterface;
 
 public class DiceInterface : MonoBehaviour
 {
-    IDiceInterfaceImports diceInterfaceImports = new NativeDiceInterfaceImports();
+    private readonly IDiceInterfaceImports diceInterfaceImports = new NativeDiceInterfaceImports();
+    private readonly object pendingMessagesLock = new object();
+    private List<PendingMessage> pendingMessages = new List<PendingMessage>();
+
+    private struct PendingMessage {
+        public string name;
+        public List<byte> bytes;
+    }
 
     private static byte[] rollVector(List<byte> rawData) {
         if (rawData.Count < 1) {
@@ -31,47 +38,54 @@ public class DiceInterface : MonoBehaviour
     }
     
     private static void DelegateMessageReceived(string name, List<byte> byteList) {
-        if (_singleton != null) {
-            if (byteList.Count == 0) {
-                if (_singleton.connectionCallback != null) {
-                    _singleton.connectionCallback(name);
-                    return;
-                }
-            } else {
-                byte firstByte = byteList[0];
+        var instance = _singleton;
+        if (instance == null) {
+            return;
+        }
 
-                switch (firstByte) {
-                    case 82:
-                        // Roll started
-                        break;
-                    case 66:
-                        // Battery level
-                        break;
-                    case 67:
-                        // Color (fetched)
-                        break;
-                    case 83: {
-                        var roll = rollVector(byteList);
-                        if (roll != null && _singleton.rollCallback != null) {
-                            _singleton.rollCallback(name, roll[0], roll[1], roll[2]);
-                        }
-                        break;
-                    }
-                    case 70:
-                    case 84:
-                    case 77: {
-                        byteList.RemoveAt(0);
-                        var roll = rollVector(byteList);
-                        if (roll != null && _singleton.rollCallback != null) {
-                            _singleton.rollCallback(name, roll[0], roll[1], roll[2]);
-                        }
-                        break;
-                    }
-                    default:
-                        Debug.Log("Not yet handled");
-                        break;
+        lock (instance.pendingMessagesLock) {
+            instance.pendingMessages.Add(new PendingMessage { name = name, bytes = byteList });
+        }
+    }
+
+    private void ProcessMessage(string name, List<byte> byteList) {
+        if (byteList.Count == 0) {
+            connectionCallback?.Invoke(name);
+            return;
+        }
+
+        byte firstByte = byteList[0];
+
+        switch (firstByte) {
+            case 82:
+                // Roll started
+                break;
+            case 66:
+                // Battery level
+                break;
+            case 67:
+                // Color (fetched)
+                break;
+            case 83: {
+                var roll = rollVector(byteList);
+                if (roll != null) {
+                    rollCallback?.Invoke(name, roll[0], roll[1], roll[2]);
                 }
+                break;
             }
+            case 70:
+            case 84:
+            case 77: {
+                var stableMessage = byteList.GetRange(1, byteList.Count - 1);
+                var roll = rollVector(stableMessage);
+                if (roll != null) {
+                    rollCallback?.Invoke(name, roll[0], roll[1], roll[2]);
+                }
+                break;
+            }
+            default:
+                Debug.Log("Not yet handled");
+                break;
         }
     }
 
@@ -92,14 +106,25 @@ public class DiceInterface : MonoBehaviour
         diceInterfaceImports.StopListening();
     }
     
-    // Start is called before the first frame update
-    void Start() {
+    void Awake() {
         _singleton = this;
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
+    void OnDestroy() {
+        if (_singleton == this) {
+            _singleton = null;
+        }
+    }
+
+    void Update() {
+        List<PendingMessage> toProcess;
+        lock (pendingMessagesLock) {
+            toProcess = pendingMessages;
+            pendingMessages = new List<PendingMessage>();
+        }
+
+        foreach (var message in toProcess) {
+            ProcessMessage(message.name, message.bytes);
+        }
     }
 }
