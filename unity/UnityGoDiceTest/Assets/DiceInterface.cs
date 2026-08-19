@@ -12,13 +12,8 @@ using UnityGoDiceInterface;
 public class DiceInterface : MonoBehaviour
 {
     private readonly IDiceInterfaceImports diceInterfaceImports = new NativeDiceInterfaceImports();
-    private readonly object pendingMessagesLock = new object();
-    private List<PendingMessage> pendingMessages = new List<PendingMessage>();
-
-    private struct PendingMessage {
-        public string name;
-        public List<byte> bytes;
-    }
+    private readonly object pendingCallbacksLock = new object();
+    private Queue<System.Action> pendingCallbacks = new Queue<System.Action>();
 
     private static byte[] rollVector(List<byte> rawData) {
         if (rawData.Count < 1) {
@@ -43,8 +38,19 @@ public class DiceInterface : MonoBehaviour
             return;
         }
 
-        lock (instance.pendingMessagesLock) {
-            instance.pendingMessages.Add(new PendingMessage { name = name, bytes = byteList });
+        lock (instance.pendingCallbacksLock) {
+            instance.pendingCallbacks.Enqueue(() => instance.ProcessMessage(name, byteList));
+        }
+    }
+
+    private static void DelegateStateChanged(DiceConnectionEvent connectionEvent) {
+        var instance = _singleton;
+        if (instance == null) {
+            return;
+        }
+
+        lock (instance.pendingCallbacksLock) {
+            instance.pendingCallbacks.Enqueue(() => instance.connectionStateCallback?.Invoke(connectionEvent));
         }
     }
 
@@ -93,12 +99,15 @@ public class DiceInterface : MonoBehaviour
 
     public delegate void ConnectionCallback(string name);
     public delegate void RollCallback(string name, byte x, byte y, byte z);
+    public delegate void ConnectionStateCallback(DiceConnectionEvent connectionEvent);
     
     public ConnectionCallback connectionCallback = null;
     public RollCallback rollCallback = null;
+    public ConnectionStateCallback connectionStateCallback = null;
     
     public void StartListening() {
         diceInterfaceImports.SetCallback(DelegateMessageReceived);
+        diceInterfaceImports.SetStateCallback(DelegateStateChanged);
         diceInterfaceImports.StartListening();
     }
     
@@ -117,14 +126,14 @@ public class DiceInterface : MonoBehaviour
     }
 
     void Update() {
-        List<PendingMessage> toProcess;
-        lock (pendingMessagesLock) {
-            toProcess = pendingMessages;
-            pendingMessages = new List<PendingMessage>();
+        Queue<System.Action> toProcess;
+        lock (pendingCallbacksLock) {
+            toProcess = pendingCallbacks;
+            pendingCallbacks = new Queue<System.Action>();
         }
 
-        foreach (var message in toProcess) {
-            ProcessMessage(message.name, message.bytes);
+        while (toProcess.Count > 0) {
+            toProcess.Dequeue().Invoke();
         }
     }
 }

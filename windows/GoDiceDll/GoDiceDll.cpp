@@ -5,9 +5,11 @@
 
 #include "stdafx.h"
 
+#include <chrono>
 #include <ppltasks.h>
 #include <semaphore>
 #include <unordered_set>
+#include <vector>
 
 #include <pplawait.h>
 
@@ -40,6 +42,7 @@ static GDDeviceConnectedCallbackFunction g_device_connected_callback = nullptr;
 static GDDeviceConnectionFailedCallbackFunction g_device_connection_failed_callback = nullptr;
 static GDDeviceDisconnectedCallbackFunction g_device_disconnected_callback = nullptr;
 static GDListenerStoppedCallbackFunction g_listener_stopped_callback = nullptr;
+static GDDeviceStateCallbackFunction g_device_state_callback = nullptr;
 static GDLogger g_logger = nullptr;
 
 using std::binary_semaphore;
@@ -54,6 +57,35 @@ using std::unordered_set;
 static auto log(const char* str) -> void;
 static WorkQueue g_bluetooth_queue("BluetoothQueue");
 static WorkQueue g_callback_queue("CallbackQueue");
+
+static uint64_t monotonic_milliseconds()
+{
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+}
+
+static void emit_device_state(const string& identifier,
+                              const GDConnectionState state,
+                              const GDConnectionReason reason,
+                              const int32_t native_status,
+                              const string& detail)
+{
+    if (!g_device_state_callback) return;
+
+    const auto milliseconds = monotonic_milliseconds();
+    g_callback_queue.enqueue([identifier, state, reason, native_status, milliseconds, detail]
+    {
+        if (g_device_state_callback)
+        {
+            g_device_state_callback(identifier.c_str(),
+                                    state,
+                                    reason,
+                                    native_status,
+                                    milliseconds,
+                                    detail.c_str());
+        }
+    });
+}
 
 static unordered_map<string, shared_ptr<DeviceSession>> g_devices_by_identifier;
 static unordered_set<string> g_devices_in_progress;
@@ -273,6 +305,11 @@ private:
             });
             
             NamedLog("Writing configuration\n");
+            emit_device_state(identifier_,
+                              GD_CONNECTION_STATE_SUBSCRIBING,
+                              GD_CONNECTION_REASON_NONE,
+                              0,
+                              "enabling notifications");
             auto configResult = co_await notify_characteristic_
                                 .WriteClientCharacteristicConfigurationDescriptorAsync(
                                     GattClientCharacteristicConfigurationDescriptorValue::Notify);
@@ -472,7 +509,7 @@ public:
         co_return result;
     }
 
-    IAsyncOperation<bool> disconnect()
+    IAsyncOperation<bool> disconnect(const GDConnectionReason reason)
     {
         try
         {
@@ -481,6 +518,11 @@ public:
             use_sema_.release();
 
             const string ident = identifier_;
+            emit_device_state(ident,
+                              GD_CONNECTION_STATE_DISCONNECTED,
+                              reason,
+                              result ? 0 : -1,
+                              result ? "disconnected" : "disconnect failed");
             g_callback_queue.enqueue([ident]
             {
                 if (g_device_disconnected_callback) {
@@ -493,6 +535,11 @@ public:
         catch (winrt::hresult_error& e)
         {
             NamedLog("Caught exception while disconnecting {}\n", e.code().value);
+            emit_device_state(identifier_,
+                              GD_CONNECTION_STATE_DISCONNECTED,
+                              reason,
+                              e.code().value,
+                              "disconnect raised an exception");
             co_return false;
         }
     }
@@ -527,6 +574,14 @@ void godice_set_callbacks(
         g_device_connection_failed_callback = deviceConnectionFailedCallback;
         g_device_disconnected_callback = deviceDisconnectedCallback;
         g_listener_stopped_callback = listenerStoppedCallback;
+    });
+}
+
+void godice_set_device_state_callback(GDDeviceStateCallbackFunction deviceStateCallback)
+{
+    g_bluetooth_queue.enqueue([deviceStateCallback]
+    {
+        g_device_state_callback = deviceStateCallback;
     });
 }
 
@@ -587,6 +642,11 @@ void godice_connect(const char* inIdent)
     string identifier = inIdent;
     g_bluetooth_queue.enqueue([identifier]
     {
+        emit_device_state(identifier,
+                          GD_CONNECTION_STATE_CONNECTING,
+                          GD_CONNECTION_REASON_NONE,
+                          0,
+                          "connection requested");
         log("Trying to connect to {}\n", identifier);
         bool result = on_queue_internal_connect(identifier).get();
         log("Result was {}\n", result);
@@ -602,9 +662,22 @@ void godice_disconnect(const char* inIdent)
 
         session = g_devices_by_identifier[identifier];
     
-        if (session == nullptr) return;
-        
-        bool result = session->disconnect().get();
+        if (session == nullptr)
+        {
+            emit_device_state(identifier,
+                              GD_CONNECTION_STATE_DISCONNECTED,
+                              GD_CONNECTION_REASON_CONNECTION_FAILED,
+                              -1,
+                              "no discovered session");
+            return;
+        }
+
+        emit_device_state(identifier,
+                          GD_CONNECTION_STATE_DISCONNECTING,
+                          GD_CONNECTION_REASON_REQUESTED,
+                          0,
+                          "disconnect requested");
+        bool result = session->disconnect(GD_CONNECTION_REASON_REQUESTED).get();
     });
 }
 
@@ -649,7 +722,7 @@ static void internal_connection_changed_handler(const BluetoothLEDevice& dev, co
         
             if (session != nullptr)
             {
-                session->disconnect().get();
+                session->disconnect(GD_CONNECTION_REASON_LINK_LOSS).get();
             }
         }
     });
@@ -673,16 +746,26 @@ static IAsyncOperation<bool> on_queue_internal_connect(const string& inIdent)
         success = co_await session->Connect();
     }
     
-    if (success && g_device_connected_callback)
+    if (success)
     {
-        g_callback_queue.enqueue([identifier]
+        emit_device_state(identifier,
+                          GD_CONNECTION_STATE_READY,
+                          GD_CONNECTION_REASON_NONE,
+                          0,
+                          "notification subscription ready");
+        if (g_device_connected_callback) g_callback_queue.enqueue([identifier]
         {
             g_device_connected_callback(identifier.c_str());
         });
     }
-    if (!success && g_device_connection_failed_callback)
+    else
     {
-        g_callback_queue.enqueue([identifier]
+        emit_device_state(identifier,
+                          GD_CONNECTION_STATE_DISCONNECTED,
+                          GD_CONNECTION_REASON_CONNECTION_FAILED,
+                          -1,
+                          "connection attempt failed");
+        if (g_device_connection_failed_callback) g_callback_queue.enqueue([identifier]
         {
             g_device_connection_failed_callback(identifier.c_str());
         });
@@ -730,10 +813,20 @@ static IAsyncOperation<bool> on_queue_received_device_found_event(const uint64_t
         {
             g_devices_by_identifier.emplace(std::make_pair(identifier, session));
             g_devices_in_progress.erase(identifier);
+            emit_device_state(identifier,
+                              GD_CONNECTION_STATE_DISCOVERED,
+                              GD_CONNECTION_REASON_NONE,
+                              0,
+                              "device discovered");
         }
         else
         {
             log("Failed to create new session\n");
+            emit_device_state(identifier,
+                              GD_CONNECTION_STATE_DISCONNECTED,
+                              GD_CONNECTION_REASON_CONNECTION_FAILED,
+                              -1,
+                              "failed to create device session");
         }
     }
     else
@@ -770,7 +863,26 @@ void godice_reset()
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     
+        std::vector<string> identifiers;
+        identifiers.reserve(g_devices_by_identifier.size());
+        for (const auto& [identifier, session] : g_devices_by_identifier)
+        {
+            identifiers.push_back(identifier);
+            emit_device_state(identifier,
+                              GD_CONNECTION_STATE_DISCONNECTING,
+                              GD_CONNECTION_REASON_RESET,
+                              0,
+                              "controller reset");
+        }
+
         g_devices_by_identifier.clear();
+        for (const auto& identifier : identifiers)
+        {
+            emit_device_state(identifier,
+                              GD_CONNECTION_STATE_DISCONNECTED,
+                              GD_CONNECTION_REASON_RESET,
+                              0,
+                              "controller reset complete");
+        }
     });
 }
-

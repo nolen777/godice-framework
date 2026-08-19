@@ -30,6 +30,10 @@ final class GoDiceClientModel: ObservableObject {
             print("Disconnected: \(identifier)")
         }
 
+        controller.setDeviceStateCallback { identifier, state, reason, nativeStatus, milliseconds, detail in
+            print("[\(milliseconds) ms] \(identifier) state=\(state) reason=\(reason) status=\(nativeStatus): \(detail)")
+        }
+
         controller.setDataCallback { [weak self] name, data in
             guard let self = self else {
                 return
