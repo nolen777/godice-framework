@@ -127,7 +127,6 @@ void DeviceDisconnectedCallback(const char* identifier)
         connectingDevices.erase(identifier);
     }
 
-    godice_connect(identifier);
 }
 
 void ListenerStoppedCallback(void)

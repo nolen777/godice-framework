@@ -1,48 +1,55 @@
-﻿#include "WorkQueue.h"
+#include "WorkQueue.h"
+
+#include <utility>
+
+#include <winrt/base.h>
 
 void WorkQueue::runner()
 {
-    while (keep_running_)
+    winrt::init_apartment(winrt::apartment_type::multi_threaded);
+
+    while (true)
     {
-        bool did_work = false;
-
-        do
+        WorkItem work_item;
         {
-            WorkItem work_item = nullptr;
+            std::unique_lock lock(mutex_);
+            condition_.wait(lock, [this]
             {
-                std::unique_lock lk(mutex_);
-                if (!keep_running_) return;
-                if (work_queue_.empty())
-                {
-                    condition_.wait(lk);
-                }
-                else
-                {
-                    work_item = work_queue_.front();
-                    work_queue_.pop();
-                }
-            }
+                return !keep_running_ || !work_queue_.empty();
+            });
 
-            if (work_item != nullptr)
-            {
-                work_item();
-                did_work = true;
-            }
-        } while (did_work && keep_running_);
+            if (!keep_running_ && work_queue_.empty()) return;
+
+            work_item = std::move(work_queue_.front());
+            work_queue_.pop();
+        }
+
+        try
+        {
+            work_item();
+        }
+        catch (...)
+        {
+            // An operation must not terminate the queue that owns Bluetooth state.
+        }
     }
 }
 
-void WorkQueue::enqueue(const WorkItem& item)
+bool WorkQueue::enqueue(WorkItem item)
 {
-    std::unique_lock lk(mutex_);
-    work_queue_.push(item);
+    std::unique_lock lock(mutex_);
+    if (!keep_running_) return false;
+
+    work_queue_.push(std::move(item));
     condition_.notify_one();
+    return true;
 }
 
 void WorkQueue::stop()
 {
-    std::unique_lock lk(mutex_);
-    std::queue<WorkItem>().swap(work_queue_);
+    std::unique_lock lock(mutex_);
+    if (!keep_running_) return;
+
     keep_running_ = false;
     condition_.notify_one();
 }
