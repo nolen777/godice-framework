@@ -43,7 +43,6 @@ using std::vector;
 
 namespace
 {
-constexpr auto k_first_notification_timeout = std::chrono::seconds(8);
 constexpr uint32_t k_max_reconnect_attempts = 4;
 constexpr uint32_t k_max_reconnect_delay_ms = 4000;
 
@@ -283,8 +282,6 @@ private:
     uint32_t reconnect_attempt_ = 0;
     std::atomic<uint64_t> generation_ = 1;
     shared_ptr<SignalGate> cancellation_gate_ = std::make_shared<SignalGate>();
-    shared_ptr<SignalGate> first_notification_gate_;
-
     BluetoothLEDevice device_ = nullptr;
     GattSession gatt_session_ = nullptr;
     GattDeviceService service_ = nullptr;
@@ -502,20 +499,16 @@ private:
 
             if (!is_current(generation, cancellation)) throw hresult_canceled();
 
-            first_notification_gate_ = std::make_shared<SignalGate>();
-            const auto notification_gate = first_notification_gate_;
             notify_token_ = notify_characteristic_.ValueChanged(
-                [weak, generation, notification_gate](const GattCharacteristic&,
-                                                       const GattValueChangedEventArgs& args)
+                [weak, generation](const GattCharacteristic&, const GattValueChangedEventArgs& args)
                 {
-                    notification_gate->signal();
                     if (const auto self = weak.lock()) self->forward_data(generation, args.CharacteristicValue());
                 });
             has_notify_token_ = true;
 
             state_ = GD_CONNECTION_STATE_SUBSCRIBING;
             emit_device_state(identifier_, state_.load(), GD_CONNECTION_REASON_NONE, 0,
-                              "enabling notifications and waiting for first notification");
+                              "enabling notifications");
             const auto config_status = co_await notify_characteristic_
                 .WriteClientCharacteristicConfigurationDescriptorAsync(
                     GattClientCharacteristicConfigurationDescriptorValue::Notify);
@@ -525,20 +518,6 @@ private:
                 outcome.native_status = static_cast<int32_t>(config_status);
                 throw hresult_error(E_FAIL, L"Failed to enable GoDice notifications");
             }
-
-            co_await resume_background();
-            HANDLE wait_handles[] = { notification_gate->event.get(), cancellation->event.get() };
-            const auto wait_result = ::WaitForMultipleObjects(
-                2,
-                wait_handles,
-                FALSE,
-                static_cast<DWORD>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                    k_first_notification_timeout).count()));
-
-            if (wait_result == WAIT_OBJECT_0 + 1 || !is_current(generation, cancellation))
-                throw hresult_canceled();
-            if (wait_result != WAIT_OBJECT_0)
-                throw hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT), L"Timed out waiting for first GoDice notification");
             if (device_.ConnectionStatus() != BluetoothConnectionStatus::Connected)
                 throw hresult_error(E_FAIL, L"Bluetooth link dropped during connection setup");
 
@@ -721,8 +700,6 @@ private:
             try { notify_characteristic_.ValueChanged(std::exchange(notify_token_, {})); } catch (...) {}
             has_notify_token_ = false;
         }
-        first_notification_gate_.reset();
-
         if (disable_notifications && notify_characteristic_)
         {
             try

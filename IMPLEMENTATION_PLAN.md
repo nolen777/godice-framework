@@ -45,14 +45,15 @@ packages the checked-in DLL; it does not build the C++ source.
 - Keep the device, GATT session, service, and characteristics alive while the
   device is ready.
 - Store and revoke every WinRT event token deterministically.
-- Await notification subscription and the first notification before declaring
-  the die ready.
+- Await notification subscription acknowledgement before declaring the die
+  ready. On C++/WinRT this is successful CCCD configuration; the vendor Unity
+  library reports the same event through its notification callback.
 - Implement bounded reconnect with backoff and an explicit cancellation path.
 - Shut down without asynchronous work referring to a destroyed session.
 
 The implementation now uses one serialized asynchronous operation stream per
 die. Connection generations cancel stale work, WinRT resources and event tokens
-have deterministic ownership, readiness waits for the first notification, and
+have deterministic ownership, readiness waits for subscription acknowledgement, and
 link loss uses four bounded reconnect attempts with 0.5/1/2/4-second backoff.
 The Windows solution is compiled on a Windows-hosted pull-request check.
 

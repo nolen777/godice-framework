@@ -48,8 +48,8 @@ artifact into the Unity sample with:
 
 The Windows transport serializes operations independently for each die and does
 not block its Bluetooth coordination queue on WinRT operations. A connection is
-reported ready only after both characteristics are available, notification
-subscription succeeds, and the first notification arrives. Link loss triggers
+reported ready only after both characteristics are available and notification
+subscription is acknowledged. Link loss triggers
 up to four reconnect attempts with 0.5, 1, 2, and 4 second delays; an explicit
 disconnect or reset cancels pending setup and retry work.
 
