@@ -8,7 +8,7 @@ Progress:
 
 - [x] Restore a consistent sample baseline.
 - [x] Add an observable connection model.
-- [ ] Replace the Windows session lifecycle.
+- [x] Replace the Windows session lifecycle.
 - [ ] Harden the macOS lifecycle.
 - [ ] Extract the GoDice protocol.
 - [ ] Add automated verification.
@@ -49,6 +49,12 @@ packages the checked-in DLL; it does not build the C++ source.
   the die ready.
 - Implement bounded reconnect with backoff and an explicit cancellation path.
 - Shut down without asynchronous work referring to a destroyed session.
+
+The implementation now uses one serialized asynchronous operation stream per
+die. Connection generations cancel stale work, WinRT resources and event tokens
+have deterministic ownership, readiness waits for the first notification, and
+link loss uses four bounded reconnect attempts with 0.5/1/2/4-second backoff.
+The Windows solution is compiled on a Windows-hosted pull-request check.
 
 ## 4. Harden the macOS lifecycle
 

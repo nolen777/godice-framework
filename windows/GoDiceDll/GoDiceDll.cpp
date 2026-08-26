@@ -213,20 +213,18 @@ public:
                             std::function<void()> removed = {})
     {
         desired_connected_ = false;
-        shutting_down_ = remove_after_disconnect;
-        remove_after_disconnect_ = remove_after_disconnect;
-        removed_callback_ = std::move(removed);
+        if (remove_after_disconnect)
+        {
+            shutting_down_ = true;
+            remove_after_disconnect_ = true;
+            removed_callback_ = std::move(removed);
+        }
         begin_new_generation();
 
         state_ = GD_CONNECTION_STATE_DISCONNECTING;
         emit_device_state(identifier_, state_.load(), reason, 0,
                           reason == GD_CONNECTION_REASON_RESET ? "controller reset" : "disconnect requested");
-
-        const auto generation = generation_.load();
-        enqueue_operation([self = shared_from_this(), generation, reason]
-        {
-            self->disconnect_async(generation, reason, false);
-        });
+        enqueue_disconnect(reason, false);
     }
 
     void request_send(vector<uint8_t> bytes)
@@ -261,11 +259,7 @@ public:
         state_ = GD_CONNECTION_STATE_DISCONNECTING;
         emit_device_state(identifier_, state_.load(), GD_CONNECTION_REASON_LINK_LOSS, native_status, detail);
 
-        const auto generation = generation_.load();
-        enqueue_operation([self = shared_from_this(), generation]
-        {
-            self->disconnect_async(generation, GD_CONNECTION_REASON_LINK_LOSS, true);
-        });
+        enqueue_disconnect(GD_CONNECTION_REASON_LINK_LOSS, true);
     }
 
 private:
@@ -280,6 +274,9 @@ private:
     std::atomic_bool desired_connected_ = false;
     std::atomic_bool shutting_down_ = false;
     bool remove_after_disconnect_ = false;
+    bool disconnect_pending_ = false;
+    bool reconnect_after_disconnect_ = false;
+    GDConnectionReason pending_disconnect_reason_ = GD_CONNECTION_REASON_NONE;
     std::function<void()> removed_callback_;
     std::atomic<GDConnectionState> state_ = GD_CONNECTION_STATE_DISCOVERED;
     GDConnectionReason reconnect_reason_ = GD_CONNECTION_REASON_CONNECTION_FAILED;
@@ -351,6 +348,20 @@ private:
             {
                 self->backoff_async(generation, cancellation, delay_ms);
             }
+        });
+    }
+
+    void enqueue_disconnect(GDConnectionReason reason, bool reconnect_after_disconnect)
+    {
+        pending_disconnect_reason_ = reason;
+        reconnect_after_disconnect_ = reconnect_after_disconnect;
+        if (disconnect_pending_) return;
+
+        disconnect_pending_ = true;
+        enqueue_operation([self = shared_from_this()]
+        {
+            const auto generation = self->generation_.load();
+            self->disconnect_async(generation, self->pending_disconnect_reason_);
         });
     }
 
@@ -597,9 +608,7 @@ private:
         finish_operation();
     }
 
-    fire_and_forget disconnect_async(uint64_t generation,
-                                     GDConnectionReason reason,
-                                     bool reconnect_after_disconnect)
+    fire_and_forget disconnect_async(uint64_t generation, GDConnectionReason reason)
     {
         int32_t status = 0;
         string detail = reason == GD_CONNECTION_REASON_LINK_LOSS ? "link-loss cleanup complete" : "disconnected";
@@ -619,19 +628,23 @@ private:
             detail = "disconnect cleanup failed";
         }
 
-        g_bluetooth_queue.enqueue([self = shared_from_this(), generation, reason,
-                                   reconnect_after_disconnect, status, detail = std::move(detail)]() mutable
+        g_bluetooth_queue.enqueue([self = shared_from_this(), generation, status,
+                                   detail = std::move(detail)]() mutable
         {
-            self->finish_disconnect(generation, reason, reconnect_after_disconnect, status, std::move(detail));
+            self->finish_disconnect(generation, status, std::move(detail));
         });
     }
 
     void finish_disconnect(uint64_t generation,
-                           GDConnectionReason reason,
-                           bool reconnect_after_disconnect,
                            int32_t native_status,
                            string detail)
     {
+        const auto reason = pending_disconnect_reason_;
+        const auto reconnect_after_disconnect = reconnect_after_disconnect_;
+        disconnect_pending_ = false;
+        reconnect_after_disconnect_ = false;
+        pending_disconnect_reason_ = GD_CONNECTION_REASON_NONE;
+
         state_ = GD_CONNECTION_STATE_DISCONNECTED;
         emit_device_state(identifier_, state_.load(), reason, native_status, std::move(detail));
         emit_device_disconnected(identifier_);
