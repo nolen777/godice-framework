@@ -46,6 +46,13 @@ artifact into the Unity sample with:
 ./scripts/install_windows_dll.sh
 ```
 
+The Windows transport serializes operations independently for each die and does
+not block its Bluetooth coordination queue on WinRT operations. A connection is
+reported ready only after both characteristics are available and notification
+subscription is acknowledged. Link loss triggers
+up to four reconnect attempts with 0.5, 1, 2, and 4 second delays; an explicit
+disconnect or reset cancels pending setup and retry work.
+
 ## Unity sample
 
 The sample project is `unity/UnityGoDiceTest` and was created with Unity
@@ -77,12 +84,12 @@ strings are valid only for the duration of the callback and must be copied by
 the receiver.
 
 The Unity bridge detects older native libraries that do not export this
-optional function. The checked-in Windows DLL is currently such an older
-binary; rebuild the updated C++ source on Windows to enable diagnostics there.
+optional function, allowing projects to report a clear warning instead of
+failing during startup.
 
 ## Current status
 
-The macOS native schemes, connection diagnostics, and Unity script compilation
-are verified. Replacing the Windows connection lifecycle is the next milestone;
-see the implementation plan for the lifecycle and soak-test work still to be
-completed.
+The macOS native schemes, connection diagnostics, Unity script compilation, and
+Windows x64 native samples are build-verified. Hardening the macOS lifecycle is
+the next implementation milestone; Windows hardware soak testing remains
+required before claiming long-duration connection stability.
