@@ -428,6 +428,7 @@ private:
 
             gatt_session_ = co_await GattSession::FromDeviceIdAsync(device_.BluetoothDeviceId());
             if (!gatt_session_) throw hresult_error(E_FAIL, L"Unable to create GATT session");
+            if (!is_current(generation, cancellation)) throw hresult_canceled();
 
             session_status_token_ = gatt_session_.SessionStatusChanged(
                 [weak, generation](const GattSession&, const GattSessionStatusChangedEventArgs& args)
@@ -445,6 +446,7 @@ private:
 
             const auto services_result =
                 co_await device_.GetGattServicesForUuidAsync(k_service_guid, BluetoothCacheMode::Uncached);
+            if (!is_current(generation, cancellation)) throw hresult_canceled();
             if (services_result.Status() != GattCommunicationStatus::Success || services_result.Services().Size() == 0)
             {
                 outcome.native_status = static_cast<int32_t>(services_result.Status());
@@ -453,6 +455,7 @@ private:
             service_ = services_result.Services().GetAt(0);
 
             const auto access = co_await service_.RequestAccessAsync();
+            if (!is_current(generation, cancellation)) throw hresult_canceled();
             if (access != DeviceAccessStatus::Allowed)
             {
                 outcome.native_status = static_cast<int32_t>(access);
@@ -461,6 +464,7 @@ private:
 
             const auto notify_result =
                 co_await service_.GetCharacteristicsForUuidAsync(k_notify_guid, BluetoothCacheMode::Uncached);
+            if (!is_current(generation, cancellation)) throw hresult_canceled();
             if (notify_result.Status() != GattCommunicationStatus::Success || notify_result.Characteristics().Size() == 0)
             {
                 outcome.native_status = static_cast<int32_t>(notify_result.Status());
@@ -475,6 +479,7 @@ private:
 
             const auto write_result =
                 co_await service_.GetCharacteristicsForUuidAsync(k_write_guid, BluetoothCacheMode::Uncached);
+            if (!is_current(generation, cancellation)) throw hresult_canceled();
             if (write_result.Status() != GattCommunicationStatus::Success || write_result.Characteristics().Size() == 0)
             {
                 outcome.native_status = static_cast<int32_t>(write_result.Status());
@@ -514,6 +519,7 @@ private:
             const auto config_status = co_await notify_characteristic_
                 .WriteClientCharacteristicConfigurationDescriptorAsync(
                     GattClientCharacteristicConfigurationDescriptorValue::Notify);
+            if (!is_current(generation, cancellation)) throw hresult_canceled();
             if (config_status != GattCommunicationStatus::Success)
             {
                 outcome.native_status = static_cast<int32_t>(config_status);
@@ -785,7 +791,9 @@ private:
 
     void forward_data(uint64_t generation, const IBuffer& buffer) const
     {
-        if (generation != generation_.load() || !g_data_received_callback.load()) return;
+        if (generation != generation_.load() || state_.load() != GD_CONNECTION_STATE_READY ||
+            !g_data_received_callback.load())
+            return;
 
         vector<uint8_t> bytes(buffer.Length());
         if (!bytes.empty()) std::copy_n(buffer.data(), bytes.size(), bytes.data());
