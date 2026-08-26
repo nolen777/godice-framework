@@ -32,6 +32,9 @@ using namespace Windows::Devices::Bluetooth::GenericAttributeProfile;
 using namespace Windows::Devices::Enumeration;
 using namespace Windows::Storage::Streams;
 
+using Windows::Foundation::IAsyncAction;
+using Windows::Foundation::IInspectable;
+
 using std::shared_ptr;
 using std::string;
 using std::unordered_map;
