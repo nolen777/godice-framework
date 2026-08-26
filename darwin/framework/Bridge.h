@@ -9,19 +9,15 @@
 #ifndef GodiceFramework_Darwin_Framework_Bridge_h
 #define GodiceFramework_Darwin_Framework_Bridge_h
 
-#include <stdint.h>
+#if __has_include(<GodiceClient/GoDiceTypes.h>)
+#include <GodiceClient/GoDiceTypes.h>
+#else
+#include <GoDiceTypes.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef void (*GDDeviceFoundCallbackFunction)(const char* identifier, const char* name);
-typedef void (*GDDataCallbackFunction)(const char* identifier, uint32_t data_size, uint8_t* data);
-typedef void (*GDDeviceConnectedCallbackFunction)(const char* identifier);
-typedef void (*GDDeviceConnectionFailedCallbackFunction)(const char* identifier);
-typedef void (*GDDeviceDisconnectedCallbackFunction)(const char* identifier);
-typedef void (*GDListenerStoppedCallbackFunction)(void);
-typedef void (*GDLogger)(const char* str);
 
 void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
                           GDDataCallbackFunction dataReceivedCallback,
@@ -29,6 +25,7 @@ void godice_set_callbacks(GDDeviceFoundCallbackFunction deviceFoundCallback,
                           GDDeviceConnectionFailedCallbackFunction deviceConnectionFailedCallback,
                           GDDeviceDisconnectedCallbackFunction deviceDisconnectedCallback,
                           GDListenerStoppedCallbackFunction listenerStoppedCallback);
+void godice_set_device_state_callback(GDDeviceStateCallbackFunction deviceStateCallback);
 void godice_set_logger(GDLogger logger);
 void godice_start_listening(void);
 void godice_stop_listening(void);

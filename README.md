@@ -57,8 +57,32 @@ and copies native callback data before queuing it for processing on Unity's main
 thread. Native callbacks may arrive on a background thread; application code
 must not call Unity APIs directly from those callbacks.
 
+## Connection diagnostics
+
+The optional `godice_set_device_state_callback` ABI reports a per-device state
+transition with a monotonic millisecond timestamp, native status code, reason,
+and detail message. The states are:
+
+- `discovered`
+- `connecting`
+- `subscribing`
+- `ready`
+- `disconnecting`
+- `disconnected`
+- `retry-wait`
+
+Disconnect reasons distinguish an application request, link loss, connection
+failure, protocol error, unavailable adapter, and controller reset. Callback
+strings are valid only for the duration of the callback and must be copied by
+the receiver.
+
+The Unity bridge detects older native libraries that do not export this
+optional function. The checked-in Windows DLL is currently such an older
+binary; rebuild the updated C++ source on Windows to enable diagnostics there.
+
 ## Current status
 
-The macOS native schemes and Unity script compilation are verified. Windows
-hardware stability work is the next milestone; see the implementation plan for
-the connection-state, lifecycle, and soak-test work still to be completed.
+The macOS native schemes, connection diagnostics, and Unity script compilation
+are verified. Replacing the Windows connection lifecycle is the next milestone;
+see the implementation plan for the lifecycle and soak-test work still to be
+completed.

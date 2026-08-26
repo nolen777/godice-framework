@@ -1,0 +1,6 @@
+cc_library(
+    name = "godice_types",
+    hdrs = ["GoDiceTypes.h"],
+    includes = ["."],
+    visibility = ["//visibility:public"],
+)

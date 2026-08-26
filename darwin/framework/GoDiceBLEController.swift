@@ -9,6 +9,27 @@ import Foundation
 import CoreBluetooth
 
 public class GoDiceBLEController: NSObject {
+    public enum ConnectionState: UInt32 {
+        case unknown = 0
+        case discovered = 1
+        case connecting = 2
+        case subscribing = 3
+        case ready = 4
+        case disconnecting = 5
+        case disconnected = 6
+        case retryWait = 7
+    }
+
+    public enum ConnectionReason: UInt32 {
+        case none = 0
+        case requested = 1
+        case linkLoss = 2
+        case connectionFailed = 3
+        case protocolError = 4
+        case adapterUnavailable = 5
+        case reset = 6
+    }
+
     private let centralManager: CBCentralManager
     private let queue = DispatchQueue(label: "goDiceBLEControllerDelegateQueue")
     
@@ -17,6 +38,7 @@ public class GoDiceBLEController: NSObject {
     private static let notifyUUID = CBUUID(string: "6e400003-b5a3-f393-e0a9-e50e24dcca9e")
     
     private var sessions: [String : DiceSession] = [:]
+    private var pendingDisconnectReasons: [String : ConnectionReason] = [:]
     
     public typealias DeviceFoundCallback = (String, String) -> Void
     public typealias DataCallback = (String, Data) -> Void
@@ -24,6 +46,7 @@ public class GoDiceBLEController: NSObject {
     public typealias DeviceConnectionFailedCallback = (String) -> Void
     public typealias DeviceDisconnectedCallback = (String) -> Void
     public typealias ListenerStoppedCallback = () -> Void
+    public typealias DeviceStateCallback = (String, ConnectionState, ConnectionReason, Int32, UInt64, String) -> Void
     
     public typealias Logger = (String) -> Void
     
@@ -33,6 +56,7 @@ public class GoDiceBLEController: NSObject {
     private var deviceConnectionFailedCallback: DeviceConnectionFailedCallback = {_ in }
     private var deviceDisconnectedCallback: DeviceDisconnectedCallback = {_ in }
     private var listenerStoppedCallback: ListenerStoppedCallback = {}
+    private var deviceStateCallback: DeviceStateCallback = {_, _, _, _, _, _ in }
     private var logger: Logger = {_ in}
     
     public func setDeviceFoundCallback(cb: @escaping DeviceFoundCallback) -> Void {
@@ -51,21 +75,34 @@ public class GoDiceBLEController: NSObject {
     public func setListenerStoppedCallback(cb: @escaping ListenerStoppedCallback) -> Void {
         listenerStoppedCallback = cb
     }
+    public func setDeviceStateCallback(cb: @escaping DeviceStateCallback) -> Void {
+        deviceStateCallback = cb
+    }
     public func setLogger(cb: @escaping Logger) -> Void {
         logger = cb
     }
     
     public func connectDevice(identifier: String) -> Void {
         if let session = sessions[identifier] {
+            emitState(identifier: identifier, state: .connecting, detail: "connection requested")
             centralManager.connect(session.peripheral)
         } else {
             logger("No session found for \(identifier)")
+            emitState(identifier: identifier,
+                      state: .disconnected,
+                      reason: .connectionFailed,
+                      detail: "no discovered session")
             deviceConnectionFailedCallback(identifier)
         }
     }
     
     public func disconnectDevice(identifier: String) -> Void {
         if let session = sessions[identifier] {
+            pendingDisconnectReasons[identifier] = .requested
+            emitState(identifier: identifier,
+                      state: .disconnecting,
+                      reason: .requested,
+                      detail: "disconnect requested")
             centralManager.cancelPeripheralConnection(session.peripheral)
         }
     }
@@ -104,10 +141,24 @@ public class GoDiceBLEController: NSObject {
     func reset() {
         listening = false
         
-        for (ident, _) in sessions {
-            disconnectDevice(identifier: ident)
+        for (identifier, session) in sessions {
+            pendingDisconnectReasons[identifier] = .reset
+            emitState(identifier: identifier,
+                      state: .disconnecting,
+                      reason: .reset,
+                      detail: "controller reset")
+            centralManager.cancelPeripheralConnection(session.peripheral)
         }
         sessions.removeAll()
+    }
+
+    private func emitState(identifier: String,
+                           state: ConnectionState,
+                           reason: ConnectionReason = .none,
+                           nativeStatus: Int32 = 0,
+                           detail: String) {
+        let milliseconds = DispatchTime.now().uptimeNanoseconds / 1_000_000
+        deviceStateCallback(identifier, state, reason, nativeStatus, milliseconds, detail)
     }
     
     public override init() {
@@ -276,7 +327,8 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             connectionFailedCallback: deviceConnectionFailed,
             dataCallback: dataReceived,
         logger: logger)
-        
+
+        emitState(identifier: identifier, state: .discovered, detail: "device discovered")
         deviceFoundCallback(identifier, peripheral.name ?? "")
     }
     
@@ -289,7 +341,10 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
             logger("No session for \(name)")
             return
         }
-        
+
+        emitState(identifier: peripheral.identifier.uuidString,
+                  state: .subscribing,
+                  detail: "discovering services and subscribing")
         session.run()
     }
 
@@ -297,20 +352,39 @@ extension GoDiceBLEController: CBCentralManagerDelegate, CBPeripheralDelegate {
                                didFailToConnect peripheral: CBPeripheral,
                                error: Error?) {
         logger("Failed to connect \(peripheral.identifier.uuidString): \(error?.localizedDescription ?? "unknown error")")
+        emitState(identifier: peripheral.identifier.uuidString,
+                  state: .disconnected,
+                  reason: .connectionFailed,
+                  nativeStatus: Int32(clamping: (error as NSError?)?.code ?? 0),
+                  detail: error?.localizedDescription ?? "connection failed")
         deviceConnectionFailedCallback(peripheral.identifier.uuidString)
     }
     
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         logger("Received error \(error?.localizedDescription ?? "unknown")")
-        
-        deviceDisconnectedCallback(peripheral.identifier.uuidString)
+
+        let identifier = peripheral.identifier.uuidString
+        let reason = pendingDisconnectReasons.removeValue(forKey: identifier) ?? .linkLoss
+        emitState(identifier: identifier,
+                  state: .disconnected,
+                  reason: reason,
+                  nativeStatus: Int32(clamping: (error as NSError?)?.code ?? 0),
+                  detail: error?.localizedDescription ?? (reason == .linkLoss ? "connection lost" : "disconnected"))
+        deviceDisconnectedCallback(identifier)
     }
     
     func deviceConnected(peripheral: CBPeripheral) {
+        emitState(identifier: peripheral.identifier.uuidString,
+                  state: .ready,
+                  detail: "notification subscription ready")
         deviceConnectedCallback(peripheral.identifier.uuidString)
     }
     
     func deviceConnectionFailed(peripheral: CBPeripheral) {
+        emitState(identifier: peripheral.identifier.uuidString,
+                  state: .disconnected,
+                  reason: .connectionFailed,
+                  detail: "connection setup failed")
         deviceConnectionFailedCallback(peripheral.identifier.uuidString)
     }
     

@@ -56,6 +56,18 @@ func SetListenerStoppedCallback(cb: @escaping () -> Void) -> Void {
     }
 }
 
+@_cdecl("set_device_state_callback")
+func SetDeviceStateCallback(cb: @escaping (UnsafePointer<CChar>, UInt32, UInt32, Int32, UInt64, UnsafePointer<CChar>) -> Void) -> Void {
+    btc.setDeviceStateCallback { identifier, state, reason, nativeStatus, monotonicMilliseconds, detail in
+        cb(identifier.cString(using: .utf8)!,
+           state.rawValue,
+           reason.rawValue,
+           nativeStatus,
+           monotonicMilliseconds,
+           detail.cString(using: .utf8)!)
+    }
+}
+
 @_cdecl("set_logger")
 func SetLogger(cb: @escaping (UnsafePointer<CChar>) -> Void) -> Void {
     btc.setLogger(cb: { (str: String) in

@@ -18,6 +18,12 @@ void DeviceConnectedCallback(const char* identifier);
 void DeviceConnectionFailedCallback(const char* identifier);
 void DeviceDisconnectedCallback(const char* identifier);
 void ListenerStoppedCallback(void);
+void DeviceStateCallback(const char* identifier,
+                         GDConnectionState state,
+                         GDConnectionReason reason,
+                         int32_t native_status,
+                         uint64_t monotonic_milliseconds,
+                         const char* detail);
 
 void log(const char* str);
 
@@ -41,6 +47,7 @@ int main(int argc, char* argv[])
         DeviceConnectionFailedCallback,
         DeviceDisconnectedCallback,
         ListenerStoppedCallback);
+    godice_set_device_state_callback(DeviceStateCallback);
     godice_start_listening();
 
     while(1);
@@ -126,6 +133,20 @@ void DeviceDisconnectedCallback(const char* identifier)
 void ListenerStoppedCallback(void)
 {
     cerr << "  Listener stopped!" << endl;
+}
+
+void DeviceStateCallback(const char* identifier,
+                         GDConnectionState state,
+                         GDConnectionReason reason,
+                         int32_t native_status,
+                         uint64_t monotonic_milliseconds,
+                         const char* detail)
+{
+    cerr << "[" << monotonic_milliseconds << " ms] " << identifier
+         << " state=" << state
+         << " reason=" << reason
+         << " status=" << native_status
+         << ": " << detail << endl;
 }
 
 void RequestColor(const char* ident_)

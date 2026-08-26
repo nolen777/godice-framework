@@ -32,6 +32,15 @@ namespace UnityGoDiceInterface {
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void LoggerCallback(IntPtr message);
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void DeviceStateCallback(
+            IntPtr identifier,
+            UInt32 state,
+            UInt32 reason,
+            Int32 nativeStatus,
+            UInt64 monotonicMilliseconds,
+            IntPtr detail);
+
         private static readonly DeviceFoundCallback DeviceFoundCallbackInstance = DeviceFound;
         private static readonly DataCallback DataCallbackInstance = DataReceived;
         private static readonly DeviceCallback DeviceConnectedCallbackInstance = DeviceConnected;
@@ -39,6 +48,7 @@ namespace UnityGoDiceInterface {
         private static readonly DeviceCallback DeviceDisconnectedCallbackInstance = DeviceDisconnected;
         private static readonly ListenerStoppedCallback ListenerStoppedCallbackInstance = ListenerStopped;
         private static readonly LoggerCallback LoggerCallbackInstance = Log;
+        private static readonly DeviceStateCallback DeviceStateCallbackInstance = DeviceStateChanged;
 
         private static readonly object StateLock = new object();
         private static readonly Dictionary<string, string> NamesByIdentifier = new Dictionary<string, string>();
@@ -46,6 +56,7 @@ namespace UnityGoDiceInterface {
         private static readonly HashSet<string> ConnectedIdentifiers = new HashSet<string>();
 
         private static IDiceInterfaceImports.DelegateMessage _delegate;
+        private static IDiceInterfaceImports.DelegateStateChange _stateDelegate;
 
         [DllImport(BundleName, EntryPoint = "godice_set_callbacks", CallingConvention = CallingConvention.Cdecl)]
         private static extern void NativeSetCallbacks(
@@ -55,6 +66,9 @@ namespace UnityGoDiceInterface {
             DeviceCallback deviceConnectionFailedCallback,
             DeviceCallback deviceDisconnectedCallback,
             ListenerStoppedCallback listenerStoppedCallback);
+
+        [DllImport(BundleName, EntryPoint = "godice_set_device_state_callback", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void NativeSetDeviceStateCallback(DeviceStateCallback deviceStateCallback);
 
         [DllImport(BundleName, EntryPoint = "godice_set_logger", CallingConvention = CallingConvention.Cdecl)]
         private static extern void NativeSetLogger(LoggerCallback logger);
@@ -168,6 +182,24 @@ namespace UnityGoDiceInterface {
             Debug.Log("GoDice listener stopped");
         }
 
+        [MonoPInvokeCallback(typeof(DeviceStateCallback))]
+        private static void DeviceStateChanged(IntPtr identifierPointer,
+                                               UInt32 state,
+                                               UInt32 reason,
+                                               Int32 nativeStatus,
+                                               UInt64 monotonicMilliseconds,
+                                               IntPtr detailPointer) {
+            var identifier = StringFromUtf8(identifierPointer);
+            _stateDelegate?.Invoke(new DiceConnectionEvent(
+                identifier,
+                NameForIdentifier(identifier),
+                (DiceConnectionState)state,
+                (DiceConnectionReason)reason,
+                nativeStatus,
+                monotonicMilliseconds,
+                StringFromUtf8(detailPointer)));
+        }
+
         [MonoPInvokeCallback(typeof(LoggerCallback))]
         private static void Log(IntPtr message) {
             Debug.Log(StringFromUtf8(message));
@@ -175,6 +207,10 @@ namespace UnityGoDiceInterface {
 
         public void SetCallback(IDiceInterfaceImports.DelegateMessage delegateMessage) {
             _delegate = delegateMessage;
+        }
+
+        public void SetStateCallback(IDiceInterfaceImports.DelegateStateChange delegateStateChange) {
+            _stateDelegate = delegateStateChange;
         }
 
         public void StartListening() {
@@ -186,6 +222,12 @@ namespace UnityGoDiceInterface {
                 DeviceConnectionFailedCallbackInstance,
                 DeviceDisconnectedCallbackInstance,
                 ListenerStoppedCallbackInstance);
+            try {
+                NativeSetDeviceStateCallback(DeviceStateCallbackInstance);
+            }
+            catch (EntryPointNotFoundException) {
+                Debug.LogWarning("This GoDice native plugin does not provide connection diagnostics");
+            }
             NativeStartListening();
         }
 

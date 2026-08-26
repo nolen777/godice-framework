@@ -4,6 +4,16 @@ The immediate goal is to make the macOS, Windows, and Unity samples in this
 repository exercise the same behavior. Packaging this repository for import by
 other Unity projects is intentionally out of scope for now.
 
+Progress:
+
+- [x] Restore a consistent sample baseline.
+- [x] Add an observable connection model.
+- [ ] Replace the Windows session lifecycle.
+- [ ] Harden the macOS lifecycle.
+- [ ] Extract the GoDice protocol.
+- [ ] Add automated verification.
+- [ ] Prove Windows stability on hardware.
+
 ## 1. Restore a consistent sample baseline
 
 - Use the existing multi-callback C ABI on both native platforms and in Unity.

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using TMPro;
 using UnityEngine;
+using UnityGoDiceInterface;
 
 public class DicePanelController : MonoBehaviour {
     public TMP_Text mainText;
@@ -23,6 +24,7 @@ public class DicePanelController : MonoBehaviour {
         mainText.text = "Hello, World!\n";
 
         diceInterface.rollCallback = ReceiveRollCallback;
+        diceInterface.connectionStateCallback = ReceiveConnectionState;
         diceInterface.StartListening();
     }
 
@@ -35,6 +37,12 @@ public class DicePanelController : MonoBehaviour {
             Debug.Log($"Received roll callback: {name} {x} {y} {z}\n");
             _diceRolls.Add(new DiceRoll { name = name, x = x, y = y, z = z });
         }
+    }
+
+    void ReceiveConnectionState(DiceConnectionEvent connectionEvent) {
+        mainText.text += $"[{connectionEvent.MonotonicMilliseconds} ms] {connectionEvent.Name}: " +
+                         $"{connectionEvent.State} ({connectionEvent.Reason}, {connectionEvent.NativeStatus}) " +
+                         $"{connectionEvent.Detail}\n";
     }
 
     // Update is called once per frame

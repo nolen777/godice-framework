@@ -5,6 +5,7 @@
 //  Created by Dan Crosby on 12/2/23.
 //
 
+#include <inttypes.h>
 #include <stdio.h>
 #include "../framework/Bridge.h"
 
@@ -14,6 +15,12 @@ void deviceConnectedCallback(const char* identifier);
 void deviceConnectionFailedCallback(const char* identifier);
 void deviceDisconnectedCallback(const char* identifier);
 void listenerStoppedCallback(void);
+void deviceStateCallback(const char* identifier,
+                         uint32_t state,
+                         uint32_t reason,
+                         int32_t native_status,
+                         uint64_t monotonic_milliseconds,
+                         const char* detail);
 
 void logger(const char* string);
 
@@ -24,6 +31,7 @@ int main(int argc, const char * argv[]) {
                          deviceConnectionFailedCallback,
                          deviceDisconnectedCallback,
                          listenerStoppedCallback);
+    godice_set_device_state_callback(deviceStateCallback);
     godice_set_logger(logger);
     godice_start_listening();
     printf("Hello, World!\n");
@@ -75,6 +83,21 @@ void deviceDisconnectedCallback(const char* identifier) {
 
 void listenerStoppedCallback(void) {
     printf("Listener stopped!\n");
+}
+
+void deviceStateCallback(const char* identifier,
+                         uint32_t state,
+                         uint32_t reason,
+                         int32_t native_status,
+                         uint64_t monotonic_milliseconds,
+                         const char* detail) {
+    printf("[%" PRIu64 " ms] %s state=%u reason=%u status=%d: %s\n",
+           monotonic_milliseconds,
+           identifier,
+           state,
+           reason,
+           native_status,
+           detail);
 }
 
 void logger(const char* string) {
